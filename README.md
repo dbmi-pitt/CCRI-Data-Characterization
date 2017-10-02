@@ -3,7 +3,7 @@
 The R code in this repository contain functions which generate summary reports 
 for PCORI CDM tables.
 
-# Prerequistes 
+# Prerequisites 
 
 * RStudio
 * The following R packages:
@@ -46,5 +46,3 @@ patids <- conn %>%
 # generate report
 generate_report('VITAL', conn, drv, samp = patids)
 ```
-
-[Click here](VITAL.html) to see an example.
