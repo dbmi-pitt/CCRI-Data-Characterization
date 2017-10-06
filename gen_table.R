@@ -74,7 +74,7 @@ top_categories <- function(x) {
   return(top_list)
 }
 
-generate_report <- function(table, con, drv, samp = NULL) {
+generate_report <- function(table, con, drv, samp = NULL, full = FALSE) {
   
   if (is.null(samp)) {
     patids <- con %>%
@@ -85,10 +85,25 @@ generate_report <- function(table, con, drv, samp = NULL) {
     patids <- samp
   }
   
-  df <- con %>%
-    tbl(sql(paste0('SELECT * FROM PCORI_ETL_31.', table))) %>%
-    filter(PATID %in% patids$PATID) %>%
-    collect()
+  if (full != FALSE) {
+    df <- con %>%
+      tbl(sql(paste0('SELECT * FROM PCORI_ETL_31.', table))) %>%
+      collect()
+  } else {
+    if (is.null(samp)) {
+      patids <- con %>%
+      tbl(sql("SELECT PATID FROM PCORI_ETL_31.DEMOGRAPHIC")) %>%
+      collect() %>%
+      sample_n(1000)
+    } else {
+      patids <- samp
+    }
+
+    df <- con %>%
+      tbl(sql(paste0('SELECT * FROM PCORI_ETL_31.', table))) %>%
+      filter(PATID %in% patids$PATID) %>%
+      collect()
+  }
   
   df <- add_sparklines(df)
 
