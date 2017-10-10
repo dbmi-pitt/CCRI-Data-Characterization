@@ -1,10 +1,12 @@
 require(dplyr)
+require(DT)
 require(formattable)
 require(htmltools)
 require(htmlwidgets)
 require(purrr)
 require(stringr)
 require(sparkline)
+require(tibble)
 require(tidyr)
 
 add_sparklines <- function(df) {
@@ -78,9 +80,9 @@ generate_report <- function(table, con, drv, samp = NULL, full = FALSE) {
   
   if (is.null(samp)) {
     patids <- con %>%
-    tbl(sql("SELECT PATID FROM PCORI_ETL_31.DEMOGRAPHIC")) %>%
-    collect() %>%
-    sample_n(1000)
+      tbl(sql("SELECT PATID FROM PCORI_ETL_31.DEMOGRAPHIC")) %>%
+      collect() %>%
+      sample_n(1000)
   } else {
     patids <- samp
   }
@@ -92,13 +94,13 @@ generate_report <- function(table, con, drv, samp = NULL, full = FALSE) {
   } else {
     if (is.null(samp)) {
       patids <- con %>%
-      tbl(sql("SELECT PATID FROM PCORI_ETL_31.DEMOGRAPHIC")) %>%
-      collect() %>%
-      sample_n(1000)
+        tbl(sql("SELECT PATID FROM PCORI_ETL_31.DEMOGRAPHIC")) %>%
+        collect() %>%
+        sample_n(1000)
     } else {
       patids <- samp
     }
-
+    
     df <- con %>%
       tbl(sql(paste0('SELECT * FROM PCORI_ETL_31.', table))) %>%
       filter(PATID %in% patids$PATID) %>%
@@ -106,7 +108,7 @@ generate_report <- function(table, con, drv, samp = NULL, full = FALSE) {
   }
   
   df <- add_sparklines(df)
-
+  
   html_table <- df %>%
     select(sl, everything()) %>%
     formattable(align='l') %>%
@@ -117,4 +119,20 @@ generate_report <- function(table, con, drv, samp = NULL, full = FALSE) {
     htmlwidgets:::widget_dependencies("sparkline","sparkline")
   )
   html_table
+}
+
+generate_summary <- function(table, con, drv) {
+  df <- con %>%
+    tbl(sql(paste0("SELECT * FROM PCORI_ETL_31.", table))) %>%
+    collect() %>%
+    describe() %>%
+    column_to_rownames(var = "var")
+  
+  df %>%
+    datatable(options = list(dom = 't',
+                             displayLength = -1),
+              colnames = c("N", "Distinct N", "Distinct %", "Null N", "Null %", 
+                           "No Information N", "No Information %", "Min", "25th Percentile", 
+                           "Mean", "75th Percentile", "Max", "Top 10")) %>%
+    saveWidget(., paste0(table, '.html'))
 }
