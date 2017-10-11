@@ -39,12 +39,28 @@ describe <- function(df,...)
       null_pct = null / nrow(df),
       no_info = (sum(1*(value %in% c('NI')))),
       no_info_pct = no_info / nrow(df),
+      min = min(as.numeric(value), na.rm = TRUE),
+      min_date = min(value, na.rm = TRUE),
+      perc25 = quantile(as.numeric(value), probs = 0.25, na.rm = TRUE),
+      mean = mean(as.numeric(value), na.rm = TRUE),
+      perc75 = quantile(as.numeric(value), probs = 0.75, na.rm = TRUE),
+      max = max(as.numeric(value), na.rm = TRUE),
+      max_date = max(value, na.rm = TRUE),
       t10 = list(top_categories(value))
     ) %>%
-    bind_cols( data_frame(type =map(df, function(x)stringr::str_c(type_sum(x))) )) %>%
-    select(var, type, N, everything()) %>%
+    select(var, N, everything()) %>%
     mutate_if(is.numeric, ~ round(.x , digits = 3) ) %>%
+    mutate_cond(unique_pct == 1, min = NA, perc25 = NA, mean = NA, perc75 = NA, max = NA, t10 = NA) %>%
+    mutate_cond(grepl("DATE", var), min = min_date, max = max_date) %>%
+    mutate(min = replace(min, which(min == Inf), NA), mean = replace(mean, which(is.na(mean)), NA), max = replace(max, which(max == -Inf), NA)) %>%
+    select(c(-min_date, -max_date)) %>%
     as.data.frame()
+}
+
+mutate_cond <- function(.data, condition, ..., envir = parent.frame()) {
+  condition <- eval(substitute(condition), .data, envir)
+  .data[condition, ] <- .data[condition, ] %>% mutate(...)
+  .data
 }
 
 substrRight <- function(x, n) {
