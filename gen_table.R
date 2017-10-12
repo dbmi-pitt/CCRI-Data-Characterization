@@ -62,6 +62,7 @@ describe_field <- function(table, field, con, drv) {
     tbl(sql(paste0("SELECT ", field, " FROM PCORI_ETL_31.", table))) %>%
     collect() %>%
     describe()
+  gc()
   des
 }
 
@@ -150,6 +151,10 @@ generate_summary <- function(table, con, drv, chunked = FALSE, verbose = FALSE) 
   
   if (chunked == "TRUE") {
     field_list <- con %>% dbListFields(., table)
+
+    # dbListFields lists column names twice, so subset extras out
+    field_list <- field_list[1:(length(field_list)/2)]
+    
     for (i in field_list) {
       if (verbose == "TRUE") { print(paste0("Field: ", i))}
       des <- describe_field(table, i, con, drv)
@@ -171,5 +176,5 @@ generate_summary <- function(table, con, drv, chunked = FALSE, verbose = FALSE) 
               colnames = c("N", "Distinct N", "Distinct %", "Null N", "Null %", 
                            "No Information N", "No Information %", "Min", "25th Percentile", 
                            "Mean", "75th Percentile", "Max", "Top 10")) %>%
-    saveWidget(., paste0(table, '.html'))
+    saveWidget(., paste0(table, '.html'), selfcontained = FALSE)
 }
