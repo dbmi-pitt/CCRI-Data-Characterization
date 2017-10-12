@@ -57,6 +57,14 @@ describe <- function(df,...)
     as.data.frame()
 }
 
+describe_field <- function(table, field, con, drv) {
+  des <- conn %>%
+    tbl(sql(paste0("SELECT ", field, " FROM PCORI_ETL_31.", table))) %>%
+    collect() %>%
+    describe()
+  des
+}
+
 mutate_cond <- function(.data, condition, ..., envir = parent.frame()) {
   condition <- eval(substitute(condition), .data, envir)
   .data[condition, ] <- .data[condition, ] %>% mutate(...)
@@ -137,14 +145,27 @@ generate_report <- function(table, con, drv, samp = NULL, full = FALSE) {
   html_table
 }
 
-generate_summary <- function(table, con, drv) {
-  df <- con %>%
-    tbl(sql(paste0("SELECT * FROM PCORI_ETL_31.", table))) %>%
-    collect() %>%
-    describe() %>%
-    column_to_rownames(var = "var")
+generate_summary <- function(table, con, drv, chunked = FALSE, verbose = FALSE) {
+  df <- data.frame()
+  
+  if (chunked == "TRUE") {
+    field_list <- con %>% dbListFields(., table)
+    for (i in field_list) {
+      if (verbose == "TRUE") { print(paste0("Field: ", i))}
+      des <- describe_field(table, i, con, drv)
+      df <- rbind(df, des)
+      rm(des)
+      gc()
+    }
+  } else {
+    df <- con %>%
+      tbl(sql(paste0("SELECT * FROM PCORI_ETL_31.", table))) %>%
+      collect() %>%
+      describe()
+  }
   
   df %>%
+    column_to_rownames(var = "var") %>%
     datatable(options = list(dom = 't',
                              displayLength = -1),
               colnames = c("N", "Distinct N", "Distinct %", "Null N", "Null %", 
