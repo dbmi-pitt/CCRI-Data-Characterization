@@ -146,6 +146,23 @@ generate_report <- function(table, con, drv, samp = NULL, full = FALSE) {
   html_table
 }
 
+generate_filtered_summary <- function(table, field, value, conn, drv) {
+  df <- con %>%
+    tbl(sql(paste0("SELECT * FROM PCORI_ETL_31.", table))) %>%
+    filter(field == value) %>%
+    collect() %>%
+    describe()
+  
+  df %>%
+    column_to_rownames(var = "var") %>%
+    datatable(options = list(dom = 't',
+                             displayLength = -1),
+              colnames = c("N", "Distinct N", "Distinct %", "Null N", "Null %",
+                           "No Information N", "No Information %", "Min", "25th Percentile",
+                           "Mean", "75th Percentile", "Max", "Top 10")) %>%
+    saveWidget(., paste0(table, '_', field, '_', value, '.html'))
+}
+
 generate_summary <- function(table, con, drv, chunked = FALSE, verbose = FALSE) {
   df <- data.frame()
   
@@ -176,5 +193,5 @@ generate_summary <- function(table, con, drv, chunked = FALSE, verbose = FALSE) 
               colnames = c("N", "Distinct N", "Distinct %", "Null N", "Null %", 
                            "No Information N", "No Information %", "Min", "25th Percentile", 
                            "Mean", "75th Percentile", "Max", "Top 10")) %>%
-    saveWidget(., paste0(table, '.html'), selfcontained = FALSE)
+    saveWidget(., paste0(table, '.html'))
 }
