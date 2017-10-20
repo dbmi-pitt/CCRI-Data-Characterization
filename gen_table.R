@@ -160,7 +160,7 @@ generate_filtered_summary <- function(table, field, value, conn, drv) {
               colnames = c("N", "Distinct N", "Distinct %", "Null N", "Null %",
                            "No Information N", "No Information %", "Min", "25th Percentile",
                            "Mean", "75th Percentile", "Max", "Top 10")) %>%
-    saveWidget(., paste0(table, '_', field, '_', value, '.html'))
+    saveWidget(., paste0(table, '.html'))
 }
 
 generate_summary <- function(table, con, drv, chunked = FALSE, verbose = FALSE) {
