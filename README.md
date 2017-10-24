@@ -5,44 +5,76 @@ for PCORI CDM tables.
 
 # Prerequisites 
 
-* RStudio
+* r-base (>=3.4.2) or RStudio
 * The following R packages:
     * dplyr, dbplyr, stringr, tidyr, purrr for data wrangling
-    * formattable, htmltools, htmlwidgets, sparkline for data visualization
-    * RJDBC and getPass for connecting to the Oracle database
-* The Oracle JDBC driver (ojdbc8.jar) stored locally
+    * DT, htmltools, htmlwidgets for data visualization
+    * rJava, RJDBC, and getPass for connecting to the Oracle database
+* Appropriate SQL driver stored locally [for Oracle JDBC connections, ojdbc7.jar or ojdbc8.jar]
+* Optional: sparklines to generate small histograms of fields [needed for generate_fancy_report()]
 
 # Usage
 
-The following code block shows how to generate a report for the VITAL table given 
-a random sample of 1000 PATIDs.
+01-functions.R contains all functions required to generate data characterization 
+reports in HTML format for a given schema. 02-process.R, 03-process-labs.R, 04-execute.R 
+are intended to be a reproducible and extendable example of report generation for the PaTH CDM
+schema.
+
+## 1 Set up connection information ##
+
+In 02-process.R, 03-process-labs.R (if analyzing LAB_RESULT_CM), and 04-execute.R,
+edit the following codeblock according to your connection config:
 
 ```r
-# load required modules
-require(RJDBC)
-require(dbplyr)
-require(getPass)
-
-# source gen_tables functions
-source('gen_table.R')
-
-# establish connection to Oracle db
-drv <- JDBC("oracle.jdbc.OracleDriver",
-            <location of JDBC driver>)
+# establish connection to db
+drv <- JDBC("oracle.jdbc.OracleDriver", "/home/pmo14/sql_jar/ojdbc7.jar")
 conn <- dbConnect(drv, "jdbc:oracle:thin:@dbmi-db-dev-01.dbmi.pitt.edu:1521:dbmi02",
-                  <username>, password = getPass())
+                  "pmo14", password = getPass())
 
-# oracle translations to dplyr
+# oracle verb translations to dplyr
 sql_translate_env.JDBCConnection <- dbplyr:::sql_translate_env.Oracle
 sql_select.JDBCConnection <- dbplyr:::sql_select.Oracle
 sql_subquery.JDBCConnection <- dbplyr:::sql_subquery.Oracle
-
-# generate random subset of patients
-patids <- conn %>%
-  tbl(sql("SELECT PATID FROM PCORI_ETL_31.DEMOGRAPHIC")) %>%
-  collect() %>%
-  sample_n(1000)
-  
-# generate report
-generate_report('VITAL', conn, drv, samp = patids)
 ```
+
+## 2 Config ##
+
+In this example, 04-execute.R is a wrapper script for 02-process.R and 03-process-labs.R.
+The script executes 02-process.R over a list of tables, restarting the R session
+after a report has been generated for each table. It also executes 03-process-labs.R for each
+LOINC code in LAB_RESULT_CM.
+
+Provide 04-execute.R with a list of tables to analyze:
+
+```r
+# list of all tables to be summarized
+table_list <- c("CONDITION", "DEATH", "DEMOGRAPHIC", "DIAGNOSIS", "DISPENSING", 
+                "ENCOUNTER", "ENROLLMENT", "PRESCRIBING", "PRO_CM", "PROCEDURES", 
+                "VITAL", "LAB_RESULT_CM")
+```
+
+If generating filtered summaries (03-process-labs.R), provide 04-execute.R with the
+field and filters of interest:
+
+```r
+loinc_codes <- conn %>%
+      tbl(sql("SELECT LAB_LOINC FROM PCORI_ETL_31.LAB_RESULT_CM")) %>%
+      distinct(LAB_LOINC) %>%
+      collect()
+    
+loinc_codes <- loinc_codes$LAB_LOINC
+gc()
+```
+
+## 3 Execute! ##
+
+To run this example, open an R session and issue the following command:
+
+```r
+source('04-execute.R')
+```
+
+# Known Issues / Caveats
+
+* If a table is empty/NULL, the wrapper script (04-execute.R) will hang.
+* Adjust Java heap size options according to the limitations of your workstation (default in this example is 16GB)
