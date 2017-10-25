@@ -50,7 +50,6 @@ for(i in table_list) {
     system(paste("Rscript 03-process-labs.R", j, pwd))
 	  }
   } else {
-    print('not a lab')
     system(paste("Rscript 02-process.R", i, pwd), intern = TRUE)
   }
 }
