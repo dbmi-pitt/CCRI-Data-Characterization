@@ -22,22 +22,9 @@ schema.
 
 ## 1 Set up connection information ##
 
-In 02-process.R, 03-process-labs.R (if analyzing LAB_RESULT_CM), and 04-execute.R,
-edit the following codeblock according to your connection config:
+Edit the config example 00-config-example.R with your SQL configuration. Rename that file to 00-config.R
 
-```r
-# establish connection to db
-drv <- JDBC("oracle.jdbc.OracleDriver", "/home/pmo14/sql_jar/ojdbc7.jar")
-conn <- dbConnect(drv, "jdbc:oracle:thin:@dbmi-db-dev-01.dbmi.pitt.edu:1521:dbmi02",
-                  "pmo14", password = getPass())
-
-# oracle verb translations to dplyr
-sql_translate_env.JDBCConnection <- dbplyr:::sql_translate_env.Oracle
-sql_select.JDBCConnection <- dbplyr:::sql_select.Oracle
-sql_subquery.JDBCConnection <- dbplyr:::sql_subquery.Oracle
-```
-
-## 2 Config ##
+## 2 Schema config ##
 
 In this example, 04-execute.R is a wrapper script for 02-process.R and 03-process-labs.R.
 The script executes 02-process.R over a list of tables, restarting the R session
