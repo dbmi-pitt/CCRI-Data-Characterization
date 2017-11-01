@@ -57,13 +57,36 @@ describe <- function(df,...)
     as.data.frame()
 }
 
-describe_field <- function(table, field, con, drv) {
+describe_field <- function(db, table, field, con, drv) {
   des <- conn %>%
-    tbl(sql(paste0("SELECT ", field, " FROM PCORI_ETL_31.", table))) %>%
+    tbl(sql(paste0("SELECT ", field, " FROM ", db, ".", table))) %>%
     collect() %>%
     describe()
   gc()
   des
+}
+
+describe_nulls <- function(df,...)
+{
+  if (nargs() > 1) df = dplyr::select(df, ...)
+  df %>%
+    gather(var, value) %>%
+    mutate(not_na = 1 - is.na(value)) %>%
+    group_by(var) %>%
+    summarize(
+      N = sum(not_na),
+      null = nrow(df) - N,
+      null_pct = null / nrow(df),
+      no_info = (sum(1*(value %in% c('NI')))),
+      no_info_pct = no_info / nrow(df)
+    ) %>%
+    select(var, N, everything()) %>%
+    mutate_if(is.numeric, ~ round(.x , digits = 3) ) %>%
+    mutate_cond(unique_pct == 1, min = NA, perc25 = NA, mean = NA, perc75 = NA, max = NA, t10 = NA) %>%
+    mutate_cond(grepl("DATE", var), min = min_date, max = max_date) %>%
+    mutate(min = replace(min, which(min == Inf), NA), mean = replace(mean, which(is.na(mean)), NA), max = replace(max, which(max == -Inf), NA)) %>%
+    select(c(-min_date, -max_date)) %>%
+    as.data.frame()
 }
 
 mutate_cond <- function(.data, condition, ..., envir = parent.frame()) {
@@ -101,11 +124,11 @@ top_categories <- function(x) {
   return(top_list)
 }
 
-generate_fancy_report <- function(table, con, drv, samp = NULL, full = FALSE) {
+generate_fancy_report <- function(db, table, con, drv, samp = NULL, full = FALSE) {
   
   if (is.null(samp)) {
     patids <- con %>%
-      tbl(sql("SELECT PATID FROM PCORI_ETL_31.DEMOGRAPHIC")) %>%
+      tbl(sql(paste0("SELECT PATID FROM ", db, ".DEMOGRAPHIC"))) %>%
       collect() %>%
       sample_n(1000)
   } else {
@@ -114,12 +137,12 @@ generate_fancy_report <- function(table, con, drv, samp = NULL, full = FALSE) {
   
   if (full != FALSE) {
     df <- con %>%
-      tbl(sql(paste0('SELECT * FROM PCORI_ETL_31.', table))) %>%
+      tbl(sql(paste0("SELECT * FROM  ", db, ".", table))) %>%
       collect()
   } else {
     if (is.null(samp)) {
       patids <- con %>%
-        tbl(sql("SELECT PATID FROM PCORI_ETL_31.DEMOGRAPHIC")) %>%
+        tbl(sql(paste0("SELECT PATID FROM ", db, ".DEMOGRAPHIC"))) %>%
         collect() %>%
         sample_n(1000)
     } else {
@@ -127,7 +150,7 @@ generate_fancy_report <- function(table, con, drv, samp = NULL, full = FALSE) {
     }
     
     df <- con %>%
-      tbl(sql(paste0('SELECT * FROM PCORI_ETL_31.', table))) %>%
+      tbl(sql(paste0("SELECT * FROM ", db, ".", table))) %>%
       filter(PATID %in% patids$PATID) %>%
       collect()
   }
@@ -146,9 +169,9 @@ generate_fancy_report <- function(table, con, drv, samp = NULL, full = FALSE) {
   html_table
 }
 
-generate_filtered_summary <- function(table, field, value, con, drv) {
+generate_filtered_summary <- function(db, table, field, value, con, drv) {
   df <- con %>%
-    tbl(sql(paste0("SELECT * FROM PCORI_ETL_31.", table))) %>%
+    tbl(sql(paste0("SELECT * FROM ", db, ".", table))) %>%
     filter(field == value) %>%
     collect() %>%
     describe()
@@ -163,29 +186,12 @@ generate_filtered_summary <- function(table, field, value, con, drv) {
     saveWidget(., paste0(table, '_', field, '_', value, '.html'), selfcontained = FALSE)
 }
 
-generate_summary <- function(table, con, drv, chunked = FALSE, verbose = FALSE) {
-  df <- data.frame()
-  
-  if (chunked == "TRUE") {
-    field_list <- con %>% dbListFields(., table)
-
-    # dbListFields lists column names twice, so subset extras out
-    field_list <- field_list[1:(length(field_list)/2)]
+generate_summary <- function(db, table, con, drv) {
+  df <- con %>%
+    tbl(sql(paste0("SELECT * FROM ", db, ".", table))) %>%
+    collect() %>%
+    describe()
     
-    for (i in field_list) {
-      if (verbose == "TRUE") { print(paste0("Field: ", i))}
-      des <- describe_field(table, i, con, drv)
-      df <- rbind(df, des)
-      rm(des)
-      gc()
-    }
-  } else {
-    df <- con %>%
-      tbl(sql(paste0("SELECT * FROM PCORI_ETL_31.", table))) %>%
-      collect() %>%
-      describe()
-  }
-  
   df %>%
     column_to_rownames(var = "var") %>%
     datatable(options = list(dom = 't',

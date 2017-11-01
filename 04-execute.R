@@ -23,22 +23,13 @@ print("generating reports...")
 for(i in table_list) {
   print(i)
   if (i == "LAB_RESULT_CM") {
-    # connection parameters
-    pwd <- getPass()
-    drv <- JDBC("oracle.jdbc.OracleDriver",
-                "/home/pmo14/sql_jar/ojdbc7.jar")
-    conn <- dbConnect(drv, "jdbc:oracle:thin:@dbmi-db-dev-01.dbmi.pitt.edu:1521:dbmi02",
-                      "pmo14", password = pwd)
-    
-    # oracle translations to dplyr
-    sql_translate_env.JDBCConnection <- dbplyr:::sql_translate_env.Oracle
-    sql_select.JDBCConnection <- dbplyr:::sql_select.Oracle
-    sql_subquery.JDBCConnection <- dbplyr:::sql_subquery.Oracle
+    # source in SQL config
+    source('00-config.R')
     
     print("generating lab reports for each LOINC code...")
     
     loinc_codes <- conn %>%
-      tbl(sql("SELECT LAB_LOINC FROM PCORI_ETL_31.LAB_RESULT_CM")) %>%
+      tbl(sql(paste0("SELECT LAB_LOINC FROM ", db, ".LAB_RESULT_CM"))) %>%
       distinct(LAB_LOINC) %>%
       collect()
     
