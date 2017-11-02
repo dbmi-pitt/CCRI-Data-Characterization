@@ -57,9 +57,9 @@ describe <- function(df,...)
     as.data.frame()
 }
 
-describe_field <- function(db, table, field, con, drv) {
+describe_field <- function(db_prefix, table, field, con, drv) {
   des <- conn %>%
-    tbl(sql(paste0("SELECT ", field, " FROM ", db, ".", table))) %>%
+    tbl(sql(paste0("SELECT ", field, " FROM ", db_prefix, table))) %>%
     collect() %>%
     describe()
   gc()
@@ -124,11 +124,11 @@ top_categories <- function(x) {
   return(top_list)
 }
 
-generate_fancy_report <- function(db, table, con, drv, samp = NULL, full = FALSE) {
+generate_fancy_report <- function(db_prefix, table, con, drv, samp = NULL, full = FALSE) {
   
   if (is.null(samp)) {
     patids <- con %>%
-      tbl(sql(paste0("SELECT PATID FROM ", db, ".DEMOGRAPHIC"))) %>%
+      tbl(sql(paste0("SELECT PATID FROM ", db_prefix, "DEMOGRAPHIC"))) %>%
       collect() %>%
       sample_n(1000)
   } else {
@@ -137,12 +137,12 @@ generate_fancy_report <- function(db, table, con, drv, samp = NULL, full = FALSE
   
   if (full != FALSE) {
     df <- con %>%
-      tbl(sql(paste0("SELECT * FROM  ", db, ".", table))) %>%
+      tbl(sql(paste0("SELECT * FROM  ", db_prefix, table))) %>%
       collect()
   } else {
     if (is.null(samp)) {
       patids <- con %>%
-        tbl(sql(paste0("SELECT PATID FROM ", db, ".DEMOGRAPHIC"))) %>%
+        tbl(sql(paste0("SELECT PATID FROM ", db_prefix, "DEMOGRAPHIC"))) %>%
         collect() %>%
         sample_n(1000)
     } else {
@@ -150,7 +150,7 @@ generate_fancy_report <- function(db, table, con, drv, samp = NULL, full = FALSE
     }
     
     df <- con %>%
-      tbl(sql(paste0("SELECT * FROM ", db, ".", table))) %>%
+      tbl(sql(paste0("SELECT * FROM ", db_prefix, table))) %>%
       filter(PATID %in% patids$PATID) %>%
       collect()
   }
@@ -169,9 +169,9 @@ generate_fancy_report <- function(db, table, con, drv, samp = NULL, full = FALSE
   html_table
 }
 
-generate_filtered_summary <- function(db, table, field, value, con, drv) {
+generate_filtered_summary <- function(db_prefix, table, field, value, con, drv) {
   df <- con %>%
-    tbl(sql(paste0("SELECT * FROM ", db, ".", table))) %>%
+    tbl(sql(paste0("SELECT * FROM ", db_prefix, table))) %>%
     filter(field == value) %>%
     collect() %>%
     describe()
@@ -186,9 +186,9 @@ generate_filtered_summary <- function(db, table, field, value, con, drv) {
     saveWidget(., paste0(table, '_', field, '_', value, '.html'), selfcontained = FALSE)
 }
 
-generate_summary <- function(db, table, con, drv) {
+generate_summary <- function(db_prefix, table, con, drv) {
   df <- con %>%
-    tbl(sql(paste0("SELECT * FROM ", db, ".", table))) %>%
+    tbl(sql(paste0("SELECT * FROM ", db_prefix, table))) %>%
     collect() %>%
     describe()
     

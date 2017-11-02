@@ -14,7 +14,7 @@ pwd <- args[2]
 source('00-config.R')
 
 # generate summary for given loinc code (args[1])
-generate_filtered_summary(db, 'LAB_RESULT_CM', 'LAB_LOINC', args[1], conn, drv)
+generate_filtered_summary(db_prefix, 'LAB_RESULT_CM', 'LAB_LOINC', args[1], conn, drv)
 
 # disconnect from db when finished
 dbDisconnect(conn)

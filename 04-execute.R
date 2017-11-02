@@ -29,7 +29,7 @@ for(i in table_list) {
     print("generating lab reports for each LOINC code...")
     
     loinc_codes <- conn %>%
-      tbl(sql(paste0("SELECT LAB_LOINC FROM ", db, ".LAB_RESULT_CM"))) %>%
+      tbl(sql(paste0("SELECT LAB_LOINC FROM ", db_prefix, "LAB_RESULT_CM"))) %>%
       distinct(LAB_LOINC) %>%
       collect()
     

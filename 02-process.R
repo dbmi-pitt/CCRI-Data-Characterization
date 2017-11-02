@@ -15,7 +15,7 @@ table <- args[1]
 source('00-config.R')
 
 # generate summary for given table in args[1]
-generate_summary(db, table, conn, drv)
+generate_summary(db_prefix, table, conn, drv)
 
 # disconnect from db when finished
 dbDisconnect(conn)

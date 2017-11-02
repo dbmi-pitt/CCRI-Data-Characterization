@@ -25,4 +25,4 @@ sql_subquery.JDBCConnection <- dbplyr:::sql_subquery.Oracle
 # sql_select.JDBCConnection <- dbplyr:::`sql_select.Microsoft SQL Server`
 
 # Declare the name/path of the database
-db <- "PCORI_ETL_31"
+db_prefix <- "PCORI_ETL_31."
