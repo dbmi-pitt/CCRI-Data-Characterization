@@ -61,6 +61,8 @@ To run this example, open an R session and issue the following command:
 source('04-execute.R')
 ```
 
+You will be prompted for your db password. Your queries will start after successful authentication.
+
 # Known Issues / Caveats
 
 * If a table is empty/NULL, the wrapper script (04-execute.R) will hang.
