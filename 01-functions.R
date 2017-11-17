@@ -58,7 +58,7 @@ describe <- function(df,...)
 }
 
 describe_field <- function(db_prefix, table, field, con, drv) {
-  des <- conn %>%
+  des <- con %>%
     tbl(sql(paste0("SELECT ", field, " FROM ", db_prefix, table))) %>%
     collect() %>%
     describe()
@@ -184,6 +184,10 @@ generate_filtered_summary <- function(db_prefix, table, field, value, con, drv) 
                            "No Information N", "No Information %", "Min", "25th Percentile",
                            "Mean", "75th Percentile", "Max", "Top 10")) %>%
     saveWidget(., paste0(table, '_', field, '_', value, '.html'), selfcontained = FALSE)
+  
+  # saves df as csv for backup / future use
+  df$t10 <- as.character(df$t10)
+  write.csv(df, paste0(table, '.csv'), row.names = FALSE)
 }
 
 generate_summary <- function(db_prefix, table, con, drv) {
@@ -191,7 +195,8 @@ generate_summary <- function(db_prefix, table, con, drv) {
     tbl(sql(paste0("SELECT * FROM ", db_prefix, table))) %>%
     collect() %>%
     describe()
-    
+
+ 
   df %>%
     column_to_rownames(var = "var") %>%
     datatable(options = list(dom = 't',
@@ -200,4 +205,8 @@ generate_summary <- function(db_prefix, table, con, drv) {
                            "No Information N", "No Information %", "Min", "25th Percentile", 
                            "Mean", "75th Percentile", "Max", "Top 10")) %>%
     saveWidget(., paste0(table, '.html'), selfcontained = FALSE)
+
+  # saves df as csv for backup / future use
+  df$t10 <- as.character(df$t10)
+  write.csv(df, paste0(table, '.csv'), row.names = FALSE)
 }
