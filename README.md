@@ -28,8 +28,8 @@ Edit the config example 00-config-example.R with your SQL configuration. Rename 
 
 In this example, 04-execute.R is a wrapper script for 02-process.R and 03-process-labs.R.
 The script executes 02-process.R over a list of tables, restarting the R session
-after a report has been generated for each table. It also executes 03-process-labs.R for each
-LOINC code in LAB_RESULT_CM.
+after a report has been generated for a given table. It also executes 03-process-labs.R for each LOINC code in LAB_RESULT_CM.
+**This structure is necessary due to known memory leaks in R.**
 
 Provide 04-execute.R with a list of tables to analyze:
 
