@@ -172,10 +172,10 @@ generate_fancy_report <- function(db_prefix, table, con, drv, samp = NULL, full 
 generate_filtered_summary <- function(db_prefix, table, field, value, con, drv) {
   df <- con %>%
     tbl(sql(paste0("SELECT * FROM ", db_prefix, table))) %>%
-    filter(field == value) %>%
+    filter((rlang::sym(field)) == value) %>%
     collect() %>%
     describe()
-  
+
   df %>%
     column_to_rownames(var = "var") %>%
     datatable(options = list(dom = 't',
@@ -187,7 +187,7 @@ generate_filtered_summary <- function(db_prefix, table, field, value, con, drv) 
   
   # saves df as csv for backup / future use
   df$t10 <- as.character(df$t10)
-  write.csv(df, paste0(table, '.csv'), row.names = FALSE)
+  write.csv(df, paste0(table, '_', field, '_', value, '.csv'), row.names = FALSE)
 }
 
 generate_summary <- function(db_prefix, table, con, drv) {
