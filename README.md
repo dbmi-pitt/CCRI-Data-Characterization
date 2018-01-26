@@ -9,61 +9,53 @@ for PCORI CDM tables.
 * The following R packages:
     * dplyr, dbplyr, stringr, tidyr, purrr for data wrangling
     * DT, htmltools, htmlwidgets for data visualization
-    * rJava, RJDBC, and getPass for connecting to the Oracle database
-* Appropriate SQL driver stored locally [for Oracle JDBC connections, ojdbc7.jar or ojdbc8.jar]
-* Optional: sparklines to generate small histograms of fields [needed for generate_fancy_report()]
+    * rJava, RJDBC, and getPass for connecting to the database
+* Appropriate SQL driver stored locally
+    * for Oracle JDBC connections, ojdbc7.jar or ojdbc8.jar
+    * for MSSQL JDBC connections, jtds-1.3.1.jar
 
 # Usage
 
-01-functions.R contains all functions required to generate data characterization 
-reports in HTML format for a given schema. 02-process.R, 03-process-labs.R, 04-execute.R 
-are intended to be a reproducible and extendable example of report generation for the PaTH CDM
-schema.
+* 00-config-{oracle, mssql}.R set up the connection to your database.
+* 01-functions.R contains all functions required to generate summary reports.
+* 02-execute-{oracle, mssql}.R loop over lists of tables/fields to run data characterization.
 
 ## 1 Set up connection information ##
 
-Edit the config example 00-config-example.R with your SQL configuration. Rename that file to 00-config.R
+Edit the config file 00-config-oracle.R or 00-config-mssql.R depending on your 
+RDBMS. **For Oracle systems, please be sure to declare the schema name, otherwise the
+scripts will fail.**
 
 ## 2 Schema config ##
 
-In this example, 04-execute.R is a wrapper script for 02-process.R and 03-process-labs.R.
-The script executes 02-process.R over a list of tables, restarting the R session
-after a report has been generated for each table. It also executes 03-process-labs.R for each
-LOINC code in LAB_RESULT_CM.
-
-Provide 04-execute.R with a list of tables to analyze:
+Provide your execute file with a list of tables to analyze:
 
 ```r
-# list of all tables to be summarized
-table_list <- c("CONDITION", "DEATH", "DEMOGRAPHIC", "DIAGNOSIS", "DISPENSING", 
-                "ENCOUNTER", "ENROLLMENT", "PRESCRIBING", "PRO_CM", "PROCEDURES", 
-                "VITAL", "LAB_RESULT_CM")
+# Declare list of tables to characterize
+table_list <- c("CONDITION", "DEATH", "DEATH_CAUSE", "DEMOGRAPHIC", "DIAGNOSIS", 
+                "DISPENSING", "ENCOUNTER", "ENROLLMENT", "PCORNET_TRIAL",
+                "PRESCRIBING", "PROCEDURES", "PRO_CM", "VITAL")
 ```
 
-If generating filtered summaries (03-process-labs.R), provide 04-execute.R with the
-field and filters of interest:
+If generating filtered summaries, provide the execute file with the field and filters of interest. (the execution scripts do this for LOINC codes, but below is a canonical example):
 
 ```r
+# Get field values for filtered characterization
 loinc_codes <- conn %>%
-      tbl(sql("SELECT LAB_LOINC FROM PCORI_ETL_31.LAB_RESULT_CM")) %>%
-      distinct(LAB_LOINC) %>%
+      tbl(sql("SELECT [field] FROM [schema if required][.][table]")) %>%
+      distinct([field]) %>%
       collect()
     
-loinc_codes <- loinc_codes$LAB_LOINC
-gc()
+field_values <- field_values$FIELD
 ```
 
 ## 3 Execute! ##
 
-To run this example, open an R session and issue the following command:
-
-```r
-source('04-execute.R')
-```
-
-You will be prompted for your db password. Your queries will start after successful authentication.
+To run this example, open an R session and issue `source('02-execute-oracle.R')`
+if your RDBMS is Oracle, or `source('02-execute-mssql.R')` if your RDBMS is SQL
+server. You will be prompted for your db password. Your queries will start after successful authentication. Completed reports are saved to the subdirectories `summaries/{CSV, HTML}` and are created during execution. 
 
 # Known Issues / Caveats
 
-* If a table is empty/NULL, the wrapper script (04-execute.R) will hang.
-* Adjust Java heap size options according to the limitations of your workstation (default in this example is 16GB)
+* Please submit an issue or email pmo14@pitt.edu with any bug reports.
+
