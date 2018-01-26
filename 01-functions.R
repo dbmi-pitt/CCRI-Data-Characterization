@@ -58,11 +58,81 @@ generate_summary <- function(conn, backend = NULL, schema = NULL, table = NULL,
   rs <- DBI::dbSendQuery(conn, paste0("SELECT * FROM ", ifelse(backend=="Oracle", paste0(schema, ".", table), table)))
   colinfo <- DBI::dbColumnInfo(rs)
   
+<<<<<<< HEAD
   # initiate queries on given table in schema
   {if(backend == "Oracle") tbl(conn, dbplyr::in_schema(schema, table)) else tbl(conn, table)} %>%
   {if(filtered == TRUE) filter(., rlang::sym(field) == value) else .} %>%
     rename_at(.vars = vars(contains("_")), .funs = funs(gsub("\\_", "", .))) %>%
     summarize_if(is.character, funs(count, nd = n_distinct, min, max)) %>%
+=======
+  if (is.null(samp)) {
+    patids <- con %>%
+      tbl(sql(paste0("SELECT PATID FROM ", db_prefix, "DEMOGRAPHIC"))) %>%
+      collect() %>%
+      sample_n(1000)
+  } else {
+    patids <- samp
+  }
+  
+  if (full != FALSE) {
+    df <- con %>%
+      tbl(sql(paste0("SELECT * FROM  ", db_prefix, table))) %>%
+      collect()
+  } else {
+    if (is.null(samp)) {
+      patids <- con %>%
+        tbl(sql(paste0("SELECT PATID FROM ", db_prefix, "DEMOGRAPHIC"))) %>%
+        collect() %>%
+        sample_n(1000)
+    } else {
+      patids <- samp
+    }
+    
+    df <- con %>%
+      tbl(sql(paste0("SELECT * FROM ", db_prefix, table))) %>%
+      filter(PATID %in% patids$PATID) %>%
+      collect()
+  }
+  
+  df <- add_sparklines(df)
+  
+  html_table <- df %>%
+    select(sl, everything()) %>%
+    formattable(align='l') %>%
+    formattable::as.htmlwidget()
+  
+  html_table$dependencies <- c(
+    html_table$dependencies,
+    htmlwidgets:::widget_dependencies("sparkline","sparkline")
+  )
+  html_table
+}
+
+generate_filtered_summary <- function(db_prefix, table, field, value, con, drv) {
+  df <- con %>%
+    tbl(sql(paste0("SELECT * FROM ", db_prefix, table))) %>%
+    filter((rlang::sym(field)) == value) %>%
+    collect() %>%
+    describe()
+
+  df %>%
+    column_to_rownames(var = "var") %>%
+    datatable(options = list(dom = 't',
+                             displayLength = -1),
+              colnames = c("N", "Distinct N", "Distinct %", "Null N", "Null %",
+                           "No Information N", "No Information %", "Min", "25th Percentile",
+                           "Mean", "75th Percentile", "Max", "Top 10")) %>%
+    saveWidget(., paste0(table, '_', field, '_', value, '.html'), selfcontained = FALSE)
+  
+  # saves df as csv for backup / future use
+  df$t10 <- as.character(df$t10)
+  write.csv(df, paste0(table, '_', field, '_', value, '.csv'), row.names = FALSE)
+}
+
+generate_summary <- function(db_prefix, table, con, drv) {
+  df <- con %>%
+    tbl(sql(paste0("SELECT * FROM ", db_prefix, table))) %>%
+>>>>>>> 8e79475f01178d36957e2c27b77dcf4d400e7344
     collect() %>%
     cbind(
       {if(backend == "Oracle") tbl(conn, dbplyr::in_schema(schema, table)) else tbl(conn, table)} %>%
