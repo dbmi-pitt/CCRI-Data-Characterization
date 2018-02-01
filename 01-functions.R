@@ -93,18 +93,35 @@ generate_summary <- function(conn, backend = NULL, schema = NULL, table = NULL,
     gather(var, val) %>% 
     separate(var, c('key', 'var')) %>% 
     spread(var, val) %>%
-    mutate(n = {if(backend == "Oracle") tbl(conn, dbplyr::in_schema(schema, table))
-      else tbl(conn, table)} %>%
-        tally %>%
-        collect %>%
-        as.numeric,
-      n_null = n - as.numeric(count),
-      pct_null = round(n_null / n, 3),
-      pct_dist = round(as.numeric(nd) / n, 3),
-      pct_NI = round(as.numeric(nNI) / n, 3)
-    ) %>%
+    purrr::when(filtered == TRUE ~ 
+                  mutate(., n = {if(backend == "Oracle") tbl(conn, dbplyr::in_schema(schema, table))
+                    else tbl(conn, table)} %>%
+                      filter(., rlang::sym(field) == value) %>%
+                      tally %>%
+                      collect %>%
+                      as.numeric,
+                    n_null = n - as.numeric(count),
+                    pct_null = round(n_null / n, 3),
+                    pct_dist = round(as.numeric(nd) / n, 3),
+                    pct_NI = round(as.numeric(nNI) / n, 3)
+                    ),
+                ~ mutate(., n = {if(backend == "Oracle") tbl(conn, dbplyr::in_schema(schema, table))
+                  else tbl(conn, table)} %>%
+                    tally %>%
+                    collect %>%
+                    as.numeric,
+                  n_null = n - as.numeric(count),
+                  pct_null = round(n_null / n, 3),
+                  pct_dist = round(as.numeric(nd) / n, 3),
+                  pct_NI = round(as.numeric(nNI) / n, 3)
+                )
+                ) %>%
     arrange(key) %T>%
-    write.csv(file = paste0('./summaries/CSV/', table, '.csv'), row.names = FALSE) %>%
+    purrr::when(filtered == TRUE ~ write.csv(.,
+      file = paste0('./summaries/CSV/', table, "_", field, "_", value, '.csv'),
+      row.names = FALSE),
+      ~ write.csv(., file = paste0('./summaries/CSV/', table, '.csv'), row.names = FALSE)
+      ) %>%
     purrr::when(sum(1*(colinfo$data.type=="numeric"))>0 
                   ~ select(., key, count, nd, pct_dist, n_null, pct_null, nNI, pct_NI, 
                              min, p10, p25, median, mean, p75, p90, max) %>%
@@ -122,6 +139,11 @@ generate_summary <- function(conn, backend = NULL, schema = NULL, table = NULL,
                                                "No Information N", "No Information %", "Min", "Max")
                                   )
                   ) %>%
-        htmlwidgets::saveWidget(., paste0(normalizePath('./summaries/HTML'), '/', table, '.html'), selfcontained = TRUE)
-    }
+    purrr::when(filtered == TRUE ~ htmlwidgets::saveWidget(., 
+                                                           paste0(normalizePath('./summaries/HTML'), '/', table, '_', field, '_', value, '.html'),
+                                                           selfcontained = TRUE),
+                ~ htmlwidgets::saveWidget(., paste0(normalizePath('./summaries/HTML'), '/', table, '.html'),
+                                          selfcontained = TRUE)
+    )
+  }
  
