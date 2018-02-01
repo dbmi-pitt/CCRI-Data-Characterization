@@ -7,7 +7,7 @@ for PCORI CDM tables.
 
 * r-base (>=3.4.2) or RStudio
 * The following R packages:
-    * dplyr, dbplyr, stringr, tidyr, purrr for data wrangling
+    * dplyr, dbplyr **(version 1.2)**, stringr, tidyr, tidyselect, purrr for data wrangling
     * DT, htmltools, htmlwidgets for data visualization
     * rJava, RJDBC, and getPass for connecting to the database
 * Appropriate SQL driver stored locally
