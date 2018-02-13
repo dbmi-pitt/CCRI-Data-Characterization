@@ -37,16 +37,11 @@ table_list <- c("CONDITION", "DEATH", "DEATH_CAUSE", "DEMOGRAPHIC", "DIAGNOSIS",
                 "PRESCRIBING", "PROCEDURES", "PRO_CM", "VITAL")
 ```
 
-If generating filtered summaries, provide the execute file with the field and filters of interest. (the execution scripts do this for LOINC codes, but below is a canonical example):
+Running the data characterization scripts on a LAB_RESULT table could run into resource limitations. Therefore, it is advised to run data characterization on-demand for a set of lab results. To run an on-demand summary for a given LOINC code, add the following to the end of the execute file for your RDBMS:
 
 ```r
-# Get field values for filtered characterization
-loinc_codes <- conn %>%
-      tbl(sql("SELECT [field] FROM [schema if required][.][table]")) %>%
-      distinct([field]) %>%
-      collect()
-    
-field_values <- field_values$FIELD
+# Run an on-demand DC for a LOINC code in the LAB_RESULT_CM table.
+generate_summary(conn, backend = [either "Oracle" or "MSSQL"], schema = [required if backend is Oracle], table = "LAB_RESULT_CM", filtered = TRUE, field = "LAB_LOINC", value = ["LOINC code of choice"])
 ```
 
 ## 3 Execute! ##

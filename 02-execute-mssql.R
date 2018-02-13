@@ -21,16 +21,3 @@ dir.create('./summaries/HTML')
 for (i in table_list) {
   generate_summary(conn, backend = "mssql", table = i)
 }
-
-# Get LOINC codes for LAB_RESULT characterization
-loinc_codes <- tbl(conn, "LAB_RESULT_CM") %>%
-  distinct(LAB_LOINC) %>%
-  collect()
-loinc_codes <- loinc_codes$LAB_LOINC
-
-# Loop through list of LOINC codes and run data characterization
-for (i in loinc_codes) {
-  generate_summary(conn, backend = "mssql",
-                   table = "LAB_RESULT_CM", filtered = TRUE,
-                   field = "LAB_LOINC", value = i)
-}
