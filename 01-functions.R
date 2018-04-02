@@ -57,7 +57,7 @@ generate_summary <- function(conn, backend = NULL, schema = NULL, table = NULL,
   # get column info to decide what queries to run
   rs <- DBI::dbSendQuery(conn, paste0("SELECT * FROM ", ifelse(backend=="Oracle", paste0(schema, ".", table), table)))
   colinfo <- DBI::dbColumnInfo(rs)
-  
+  DBI::dbClearResult(rs)
   # initiate queries on given table in schema
   {if(backend == "Oracle") tbl(conn, dbplyr::in_schema(schema, table)) else tbl(conn, table)} %>%
   {if(filtered == TRUE) filter(., rlang::sym(field) == value) else .} %>%
