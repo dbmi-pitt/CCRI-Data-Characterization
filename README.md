@@ -7,7 +7,7 @@ for PCORI CDM tables.
 
 * r-base (>=3.4.2) or RStudio
 * The following R packages:
-    * dplyr, dbplyr **(version 1.2)**, stringr, tidyr, tidyselect, purrr for data wrangling
+    * dplyr, dbplyr **(version 1.2)**, glue, stringr, readr, tidyr, tidyselect, purrr for data wrangling
     * DT, htmltools, htmlwidgets for data visualization
     * rJava, RJDBC, and getPass for connecting to the database
 * Appropriate SQL driver stored locally
@@ -18,7 +18,8 @@ for PCORI CDM tables.
 
 * 00-config-{oracle, mssql}.R set up the connection to your database.
 * 01-functions.R contains all functions required to generate summary reports.
-* 02-execute-{oracle, mssql}.R loop over lists of tables/fields to run data characterization.
+* 02-unit-tests-{oracle, mssql}.R run a prespecified list of data validation tests located in `inst/unit_tests.csv`. These tests are replications of selected required checks in the PCORnet data characterization SAS file for CDM version 3.1. Checks for CDM version 4.0 will be generated in an upcoming revision.
+* 03-execute-{oracle, mssql}.R loop over lists of tables/fields to run data characterization.
 
 ## 1 Set up connection information ##
 
@@ -46,9 +47,9 @@ generate_summary(conn, backend = [either "Oracle" or "MSSQL"], schema = [require
 
 ## 3 Execute! ##
 
-To run this example, open an R session and issue `source('02-execute-oracle.R')`
-if your RDBMS is Oracle, or `source('02-execute-mssql.R')` if your RDBMS is SQL
-server. You will be prompted for your db password. Your queries will start after successful authentication. Completed reports are saved to the subdirectories `summaries/{CSV, HTML}` and are created during execution. 
+To run data validation tests, open an R session and issue `source('02-unit-tests-oracle.R')` if your RDBMS is Oracle or `source('02-unit-tests-mssql.R')` if your RDBMS is SQL server. Results are saved to the subdirectory `/unit_tests/` in a datestamped CSV file.
+
+To generate the data characterization summary for each table, open an R session and issue `source('03-execute-oracle.R')` or `source('03-execute-mssql.R')` according to your RDBMS. You will be prompted for your db password. Your queries will start after successful authentication. Completed reports are saved to the subdirectories `summaries/{CSV, HTML}` and are created during execution. 
 
 # Known Issues / Caveats
 
