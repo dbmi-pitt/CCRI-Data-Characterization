@@ -17,7 +17,19 @@ table_list <- c("CONDITION", "DEATH", "DEATH_CAUSE", "DEMOGRAPHIC", "DIAGNOSIS",
 dir.create('./summaries/CSV', recursive = TRUE)
 dir.create('./summaries/HTML')
 
+# Create time elapsed df
+time_elapsed <- tibble::tibble(table_name = NA, elapsed = NA)
+
 # Loop through list of tables and run data characterization
 for (i in table_list) {
+  start_timer <- proc.time()
   generate_summary(conn, backend = "Oracle", schema = schema, table = i)
+  elapsed_time <- proc.time() - start_timer
+  time_elapsed %>%
+    add_row(table_name = i, elapsed = as.numeric(elapsed_time[3])) -> time_elapsed
 }
+
+# export time elapsed for each table to a CSV
+time_elapsed %>%
+  filter(!is.na(table_name)) %>%
+  readr::write_csv('./time_elapsed.csv')
