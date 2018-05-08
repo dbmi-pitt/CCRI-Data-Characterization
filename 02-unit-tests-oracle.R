@@ -5,7 +5,7 @@ library(dbplyr)
 library(tidyr)
 
 # Source in config and function objects
-source('00-config-oracle-local.R')
+source('00-config-oracle.R')
 source('01-functions.R')
 
 # Run unit tests and save results to unit_tests subdirectory
