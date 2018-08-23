@@ -2,11 +2,12 @@
 drv <- JDBC("net.sourceforge.jtds.jdbc.Driver", 
             "enter location of jdbc driver here")
 
-# Enter your server address, domain, and database name below
+# Enter your server address, domain, database name, and CDM version below
 mssql_addr <- "server address"
 mssql_port <- "1433"
 domain <- "domain"
 db <- "db_name"
+version <- "3.1 or 4.1"
 
 connection_string <- paste0("jdbc:jtds:sqlserver://", mssql_addr, ":", mssql_port, 
                             ";domain=", domain, ";databaseName=", db)

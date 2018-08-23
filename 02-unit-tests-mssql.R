@@ -11,7 +11,8 @@ source('01-functions.R')
 # Run unit tests and save results to unit_tests subdirectory
 dir.create('./unit_tests')
 
-readr::read_csv('./inst/unit_tests.csv') %>%
-  mutate(backend = "mssql", version = "3.1") %>%
+{if (version == "3.1") readr::read_csv('./inst/unit_tests_31.csv') 
+  else if (version == "4.1") readr::read_csv('./inst/unit_tests_41.csv') } %>%
+  mutate(backend = "mssql", version = version) %>%
   purrr::pmap_df(perform_unit_tests) %>%
   readr::write_csv(., paste0('./unit_tests/unit_tests_', format(Sys.time(), "%m%d%Y"), '.csv'))

@@ -7,8 +7,9 @@ drv <- JDBC("oracle.jdbc.OracleDriver",
 conn <- dbConnect(drv, "[connection string]",
                   "[username]", password = getPass::getPass())
 
-# Enter the schema name of your database
+# Enter the schema name and version of your database
 schema <- "schema_name"
+version <- "3.1 or 4.1"
 
 # dbplyr v1.2 does not provide dplyr->sql verb translations for median, quantile,
 # or conditional counts (SUM(CASE WHEN)). Below modifies the base_odbc_agg object

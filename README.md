@@ -18,14 +18,14 @@ for PCORI CDM tables.
 
 * 00-config-{oracle, mssql}.R set up the connection to your database.
 * 01-functions.R contains all functions required to generate summary reports.
-* 02-unit-tests-{oracle, mssql}.R run a prespecified list of data validation tests located in `inst/unit_tests.csv`. These tests are replications of selected required checks in the PCORnet data characterization SAS file for CDM version 3.1. Checks for CDM version 4.0 will be generated in an upcoming revision.
+* 02-unit-tests-{oracle, mssql}.R run a prespecified list of data validation tests located in `inst/unit_tests.csv`. These tests are replications of selected required checks in the PCORnet data characterization SAS file.
 * 03-execute-{oracle, mssql}.R loop over lists of tables/fields to run data characterization.
 
 ## 1 Set up connection information ##
 
 Edit the config file 00-config-oracle.R or 00-config-mssql.R depending on your 
-RDBMS. **For Oracle systems, please be sure to declare the schema name, otherwise the
-scripts will fail.**
+RDBMS. You must assign either 3.1 or 4.1 to the version object so the scripts will know
+which CDM version to run against. **For Oracle systems, also please be sure to declare the schema name, otherwise the scripts will fail.**
 
 ## 2 Schema config ##
 

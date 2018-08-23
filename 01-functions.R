@@ -33,8 +33,14 @@ events_per_encounter <- function(table, field, vals, desc, test, schema = NULL, 
            as_tibble())
 }
 
-extreme_values <- function(table, field, test, schema = NULL, backend = NULL) {
-  bounds <- readr::read_csv('./inst/CDM_31_parseable.csv') %>%
+extreme_values <- function(table, field, test, schema = NULL, backend = NULL, version = NULL) {
+  if(version == "3.1") {
+    parseable <- readr::read_csv('./inst/CDM_31_parseable.csv')
+  }
+  if(version == "4.1") {
+    parseable <- readr::read_csv('./inst/CDM_41_parseable.csv')
+  }
+  bounds <- parseable %>%
     filter(TABLE_NAME == table & FIELD_NAME == field) %>%
     select(VALUESET_ITEM) %>%
     pull() %>%
@@ -62,8 +68,8 @@ get_valueset <- function(table, field, version = NULL) {
   if(version == "3.1") {
     parseable <- readr::read_csv('./inst/CDM_31_parseable.csv')
   }
-  if(version == "4.0") {
-    parseable <- readr::read_csv('./inst/CDM_40_parseable.csv')
+  if(version == "4.1") {
+    parseable <- readr::read_csv('./inst/CDM_41_parseable.csv')
   }
   return(parseable %>%
            filter(TABLE_NAME == table & FIELD_NAME == field) %>%
@@ -85,6 +91,31 @@ orphans <- function(child, parent, key, test, schema = NULL, backend = NULL) {
   result <- DBI::dbFetch(query)
   DBI::dbClearResult(query)
   txt <- glue::glue("Table {child} has {result} orphan {key}s.")
+  return(tibble::tibble(text = txt,
+                        test = test,
+                        result = as.numeric(result)
+  )
+  )
+}
+
+patients_per_encounter <- function(table, field, test, schema = NULL, backend = NULL) {
+  n_field <- glue::glue("N_", field)
+  sql <- glue::glue_sql("SELECT 100 * ROUND(({`n_field`} / N_ENC), 3) as RATIO FROM
+                        (SELECT COUNT(DISTINCT PATID) as {`n_field`}, 1 as id ",
+                        ifelse(backend == "Oracle", 
+                               "FROM {`schema`}.{`table`}) a ",
+                               "FROM {`table`}) a "),
+                        "LEFT JOIN 
+                        (SELECT COUNT(DISTINCT PATID) as N_ENC, 1 as id ",
+                        ifelse(backend == "Oracle", 
+                               "FROM {`schema`}.ENCOUNTER) b ",
+                               "FROM ENCOUNTER) b "),
+                        "ON a.id = b.id",
+                        .con = conn)
+  query <- DBI::dbSendQuery(conn, sql)
+  result <- DBI::dbFetch(query)
+  DBI::dbClearResult(query)
+  txt = glue::glue("{result}% of patients with encounters have {field} records.")
   return(tibble::tibble(text = txt,
                         test = test,
                         result = as.numeric(result)
@@ -142,11 +173,15 @@ perform_unit_tests <- function(table, field, test, schema = NULL, backend = NULL
   } else if (test == "DC 1.10") {
     replication_error("ENCOUNTER", table, "ENCOUNTERID", field, test = test, schema = schema, backend = backend)
   } else if (test == "DC 2.02") {
-    extreme_values(table, field, test = test, schema = schema, backend = backend)
+    extreme_values(table, field, test = test, schema = schema, backend = backend, version = version)
   } else if (test == "DC 3.01") {
     events_per_encounter(table, field, c('09', '10', '11', 'SM'), "diagnosis records with known DX_TYPE", test = test, schema = schema, backend = backend)
   } else if (test == "DC 3.02") {
     events_per_encounter(table, field, c('09', '10', '11', 'CH', 'LC', 'ND', 'RE'), "procedure records with known PX_TYPE", test = test, schema = schema, backend = backend)
+  } else if (test == "DC 3.04") {
+    patients_per_encounter(table, field, test = test, schema = schema, backend = backend)
+  } else if (test == "DC 3.05") {
+    patients_per_encounter(table, field, test = test, schema = schema, backend = backend)
   }
 }
 
@@ -156,8 +191,9 @@ numeric_query_oracle <- function(conn, schema, table, colinfo, filtered = FALSE,
                                  field = NULL, value = NULL) {
   tbl(conn, dbplyr::in_schema(schema, table)) %>%
     {if(filtered == TRUE) filter(., rlang::sym(field) == value) else .} %>%
+    rename_at(.vars = vars(contains("RAW")), .funs = funs(gsub("\\RAW", "R", .))) %>%
     rename_at(.vars = vars(contains("_")), .funs = funs(gsub("\\_", "", .))) %>%
-    summarize_if(is.numeric, funs(count, nd = n_distinct, min, p05 = quantile(., 0.05),
+    summarize_if(is.numeric, funs(cn = count, nd = n_distinct, min, p05 = quantile(., 0.05),
                                   p25 = quantile(., 0.25), median, mean,
                                   p75 = quantile(., 0.75), p95 = quantile(., 0.95),
                                   max)) %>%
@@ -175,11 +211,12 @@ numeric_query_mssql <- function(conn, table, colinfo, filtered = FALSE,
   tbl(conn, table) %>%
     {if(filtered == TRUE) filter(., rlang::sym(field) == value) else .} %>%
     rename_at(.vars = vars(contains("_")), .funs = funs(gsub("\\_", "", .))) %>%
-    summarize_if(is.numeric, funs(count, nd = n_distinct, min, mean, max)) %>%
+    summarize_if(is.numeric, funs(cn = count, nd = n_distinct, min, mean, max)) %>%
     collect() %>%
     cbind(
       tbl(conn, table) %>%  
         {if(filtered == TRUE) filter(., rlang::sym(field) == value) else .} %>%
+        rename_at(.vars = vars(contains("RAW")), .funs = funs(gsub("\\RAW", "R", .))) %>%
         rename_at(.vars = vars(contains("_")), .funs = funs(gsub("\\_", "", .))) %>%
         summarize_if(is.numeric, funs(p05 = quantile(., 0.05), p25 = quantile(., 0.25),
                                       median = quantile(., 0.5), p75 = quantile(., 0.75),
@@ -195,7 +232,7 @@ numeric_query_mssql <- function(conn, table, colinfo, filtered = FALSE,
     )
 }
 
-generate_summary <- function(conn, backend = NULL, schema = NULL, table = NULL,
+generate_summary <- function(conn, backend = NULL, version = NULL, schema = NULL, table = NULL,
                              filtered = FALSE, field = NULL, value = NULL) {
   #' generate_summary()
   #' Arguments:
@@ -215,12 +252,14 @@ generate_summary <- function(conn, backend = NULL, schema = NULL, table = NULL,
   # initiate queries on given table in schema
   {if(backend == "Oracle") tbl(conn, dbplyr::in_schema(schema, table)) else tbl(conn, table)} %>%
   {if(filtered == TRUE) filter(., rlang::sym(field) == value) else .} %>%
+    rename_at(.vars = vars(contains("RAW")), .funs = funs(gsub("\\RAW", "R", .))) %>%
     rename_at(.vars = vars(contains("_")), .funs = funs(gsub("\\_", "", .))) %>%
-    summarize_if(is.character, funs(count, nd = n_distinct, min, max)) %>%
+    summarize_if(is.character, funs(cn = count, nd = n_distinct, min, max)) %>%
     collect() %>%
     cbind(
       {if(backend == "Oracle") tbl(conn, dbplyr::in_schema(schema, table)) else tbl(conn, table)} %>%
       {if(filtered == TRUE) filter(., rlang::sym(field) == value) else .} %>%
+        rename_at(.vars = vars(contains("RAW")), .funs = funs(gsub("\\RAW", "R", .))) %>%
         rename_at(.vars = vars(contains("_")), .funs = funs(gsub("\\_", "", .))) %>%
         select(., -contains("DATE"), -contains("TIME")) %>%
         summarize_if(is.character, funs(nNI = cond_count(., 'NI'), nUN = cond_count(., 'UN'),
@@ -255,7 +294,7 @@ generate_summary <- function(conn, backend = NULL, schema = NULL, table = NULL,
                       tally %>%
                       collect %>%
                       as.numeric,
-                    n_null = n - as.numeric(count),
+                    n_null = n - as.numeric(cn),
                     pct_null = round(n_null / n, 3) * 100,
                     pct_dist = round(as.numeric(nd) / n, 3) * 100,
                     pct_NI = round(as.numeric(nNI) / n, 3) * 100,
@@ -269,7 +308,7 @@ generate_summary <- function(conn, backend = NULL, schema = NULL, table = NULL,
                     tally %>%
                     collect %>%
                     as.numeric,
-                  n_null = n - as.numeric(count),
+                  n_null = n - as.numeric(cn),
                   pct_null = round(n_null / n, 3) * 100,
                   pct_dist = round(as.numeric(nd) / n, 3) * 100,
                   pct_NI = round(as.numeric(nNI) / n, 3) * 100,
@@ -279,10 +318,14 @@ generate_summary <- function(conn, backend = NULL, schema = NULL, table = NULL,
                   pct_missing = pct_null + pct_NI + pct_UN + pct_OT
                 )
                 ) %>%
-    left_join(., readr::read_csv('./inst/CDM_31_field_names.csv') %>%
-                filter(Table == table) %>%
-                select(key, Field:Required),
-              by = 'key') %>%
+    {if(version == "3.1") left_join(., readr::read_csv('./inst/CDM_31_field_names.csv') %>%
+                                      filter(Table == table) %>%
+                                      select(key, Field:Required),
+                                    by = 'key')
+      else if (version == "4.1") left_join(., readr::read_csv('./inst/CDM_41_field_names.csv') %>%
+                                             filter(Table == table) %>%
+                                             select(key, Field:Required),
+                                           by = 'key')} %>%
     arrange(Order) %>%
     select(-key, -Order) %>%
     select(Field, Required, everything()) %T>%
@@ -292,7 +335,7 @@ generate_summary <- function(conn, backend = NULL, schema = NULL, table = NULL,
       ~ write.csv(., file = paste0('./summaries/CSV/', table, '.csv'), row.names = FALSE)
       ) %>%
     purrr::when(sum(1*(colinfo$data.type=="numeric"))>0 
-                  ~ select(., Field, Required, count, nd, pct_dist, n_null, pct_null, n_missing, pct_missing, 
+                  ~ select(., Field, Required, cn, nd, pct_dist, n_null, pct_null, n_missing, pct_missing, 
                              min, p05, p25, median, mean, p75, p95, max) %>%
                     tibble::column_to_rownames(var = "Field") %>%
                     DT::datatable(options = list(dom = 't', displayLength = -1),
@@ -301,7 +344,7 @@ generate_summary <- function(conn, backend = NULL, schema = NULL, table = NULL,
                                                "25th Percentile", "Median", "Mean", "75th Percentile",
                                                "95th Percentile", "Max")
                                   ),
-                  ~ select(., Field, Required, count, nd, pct_dist, n_null, pct_null, n_missing, pct_missing, min, max) %>%
+                  ~ select(., Field, Required, cn, nd, pct_dist, n_null, pct_null, n_missing, pct_missing, min, max) %>%
                     tibble::column_to_rownames(var = "Field") %>%
                     DT::datatable(options = list(dom = 't', displayLength = -1),
                                   colnames = c("Required", "N", "Distinct N", "Distinct %", "Null N", "Null %",
