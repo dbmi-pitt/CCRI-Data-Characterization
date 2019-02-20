@@ -3,6 +3,8 @@ drv <- JDBC("net.sourceforge.jtds.jdbc.Driver",
             "enter location of jdbc driver here")
 
 # Enter your server address, domain, database name, and CDM version below
+# if you do not connect via Windows Authentication, you may not need domain.
+# Be sure to edit the connection string accordingly.
 mssql_addr <- "server address"
 mssql_port <- "1433"
 domain <- "domain"
