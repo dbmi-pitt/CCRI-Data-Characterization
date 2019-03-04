@@ -102,25 +102,38 @@ FROM (
   )
 }
 
-record_clustering <- function(test, schema = NULL, backend = NULL) {
+record_duplication <- function(table, field, test, schema = NULL, backend = NULL) {
   sql <- glue::glue_sql("
                         SELECT
-                          patid, count(patid)/(SELECT count(patid) FROM ", ifelse(backend == "Oracle", "{`schema`}.encounter) ", "encounter) "), "AS PCT
-                        FROM ", ifelse(backend == "Oracle", "{`schema`}.encounter ", "encounter "),
-                       "GROUP BY patid
-                        ORDER BY pct desc
+                          COUNT(*)
+                        FROM (
+                          SELECT
+                            {`field`}
+                          FROM ", ifelse(backend == "Oracle", "{`schema`}.{`table`} ", "{`table`} "),
+                       "
+                        GROUP BY {`field`}
+                        HAVING COUNT(DISTINCT PATID) > 1
+                        ) a
                         ", .con = conn)
   query <- DBI::dbSendQuery(conn, sql)
-  result <- DBI::dbFetch(query)
+  numerator <- DBI::dbFetch(query)
   DBI::dbClearResult(query)
-  return(
-    result %>%
-      filter(PCT > 5) %>%
-      count() %>%
-      mutate(text = glue::glue("More than 5% of encounters are assigned to {n} PATIDs."),
-             test = test,
-             result = ifelse(n > 0, "FAIL", "PASS")) %>%
-      select(text, test, result)
+  sql <- glue::glue_sql("
+                        SELECT
+                          COUNT(DISTINCT {`field`})
+                        FROM ", ifelse(backend == "Oracle", "{`schema`}.{`table`} ", "{`table`} "),
+                        .con = conn)
+  query <- DBI::dbSendQuery(conn, sql)
+  denominator <- DBI::dbFetch(query)
+  DBI::dbClearResult(query)
+  result <- round(100 * numerator / denominator, 2)
+  threshold <- 5
+  pass <- ifelse(result > threshold, "FAIL", "PASS")
+  txt <- glue::glue("{result} percent of {field}s are associated with more than 1 PATID in {table}.")
+  return(tibble::tibble(text = txt,
+                        test = test,
+                        result = as.character(pass)
+  )
   )
 }
 
@@ -346,6 +359,16 @@ orphans <- function(child, parent, key, test, schema = NULL, backend = NULL, ver
     
   }
   
+  if (test == "DC 1.12") {
+    sql <- glue::glue_sql("
+                        SELECT COUNT(DISTINCT {`key`}) FROM ",
+                          ifelse(backend == "Oracle", "{`schema`}.{`child`} c
+                               WHERE NOT EXISTS (SELECT PROVIDERID FROM {`schema`}.{`parent`} p ",
+                                 "{`child`} c
+                               WHERE NOT EXISTS (SELECT PROVIDERID FROM {`parent`} p "),
+                          "WHERE p.PROVIDERID = c.{`key`})",
+                          .con = conn)
+  } else {
   sql <- glue::glue_sql("
                         SELECT COUNT(DISTINCT {`key`}) FROM ",
                         ifelse(backend == "Oracle", "{`schema`}.{`child`} c
@@ -354,6 +377,7 @@ orphans <- function(child, parent, key, test, schema = NULL, backend = NULL, ver
                                WHERE NOT EXISTS (SELECT {`key`} FROM {`parent`} p "),
                         "WHERE p.{`key`} = c.{`key`})",
                         .con = conn)
+  }
   if (test == "DC 1.09") {
     query <- DBI::dbSendQuery(conn, sql)
     numerator <- DBI::dbFetch(query)
@@ -393,7 +417,9 @@ missing_or_unknown <- function(table, field, test, threshold = NULL, schema = NU
   if (field == "DISCHARGE_DISPOSITION") {
     sql <- glue::glue_sql("
                       SELECT
-                        ROUND(100 * a.num / b.denom, 2)
+                        CASE WHEN b.denom != 0 THEN ROUND(100 * a.num / b.denom, 2)
+                             ELSE NULL
+                        END as result
                       FROM (
                         SELECT
                           COUNT(*) as num, 1 as id
@@ -410,7 +436,9 @@ missing_or_unknown <- function(table, field, test, threshold = NULL, schema = NU
   } else if (field == "ADMIT_DATE" | field == "DISCHARGE_DATE") {
     sql <- glue::glue_sql("
                       SELECT
-                        ROUND(100 * a.num / b.denom, 2)
+                        CASE WHEN b.denom != 0 THEN ROUND(100 * a.num / b.denom, 2)
+                             ELSE NULL
+                        END as result
                       FROM (
                         SELECT
                           COUNT(*) as num, 1 as id
@@ -425,10 +453,13 @@ missing_or_unknown <- function(table, field, test, threshold = NULL, schema = NU
                       ) b on a.id = b.id",
                           .con = conn)
   } else if (field == "BIRTH_DATE" | field == "MEASURE_DATE" | field == "PX_DATE" | field == "DISPENSE_DATE" 
-             | field == "RESULT_DATE" | field == "RX_ORDER_DATE" | field == "OBSCLIN_DATE" | field == "DISPENSE_SUP") {
+             | field == "RESULT_DATE" | field == "RX_ORDER_DATE" | field == "OBSCLIN_DATE" | field == "DISPENSE_SUP"
+             | field == "ENR_START_DATE" | field == "ENR_END_DATE" | field == "PRO_DATE") {
     sql <- glue::glue_sql("
                       SELECT
-                        ROUND(100 * a.num / b.denom, 2)
+                        CASE WHEN b.denom != 0 THEN ROUND(100 * a.num / b.denom, 2)
+                             ELSE NULL
+                        END as result
                       FROM (
                         SELECT
                           COUNT(*) as num, 1 as id
@@ -444,7 +475,9 @@ missing_or_unknown <- function(table, field, test, threshold = NULL, schema = NU
   } else {
     sql <- glue::glue_sql("
                       SELECT
-                        ROUND(100 * a.num / b.denom, 2)
+                        CASE WHEN b.denom != 0 THEN ROUND(100 * a.num / b.denom, 2)
+                             ELSE NULL
+                        END as result
                       FROM (
                         SELECT
                           COUNT(*) as num, 1 as id
@@ -473,7 +506,9 @@ missing_or_unknown <- function(table, field, test, threshold = NULL, schema = NU
 normal_range_specification <- function(table, field, test, schema = NULL, backend = NULL) {
   sql <- glue::glue_sql("
                         SELECT
-                        round(100 * a.num / b.denom, 2)
+                          CASE WHEN b.denom != 0 THEN ROUND(100 * a.num / b.denom, 2)
+                               ELSE NULL
+                          END AS result
                         FROM (
                           SELECT
                           	COUNT(*) AS num, 1 AS id
@@ -798,38 +833,30 @@ ifelse(backend == "Oracle", "greatest(unexp_alpha, unexp_length, unexp_numeric, 
            as_tibble())
   }
 
-primary_key_error <- function(test, schema = NULL, backend = NULL) {
-  if (backend == "Oracle") {
-    sql <- glue::glue_sql("
+primary_key_error <- function(table, field, test, schema = NULL, backend = NULL) {
+  fields <- unlist(strsplit(field, split=", "))
+  sql <- glue::glue_sql("
+                        SELECT
+                          COUNT(*)
+                        FROM (
                           SELECT
-                            a.table_name, a.constraint_name,
-                            b.column_name, a.constraint_type
-                          FROM all_constraints a, all_cons_columns b
-                          WHERE a.owner = {schema} and a.table_name = b.table_name AND a.owner = b.owner AND a.constraint_name = b.constraint_name
-                          ORDER BY table_name asc
-                          ", .con = conn)
-  } else if (backend == "mssql") {
-    sql <- glue::glue_sql("
-                          SELECT
-                            a.table_name AS TABLE_NAME,
-                            b.column_name AS COLUMN_NAME, SUBSTRING(a.constraint_type, 1, 1) AS CONSTRAINT_TYPE
-                          FROM information_schema.table_constraints a, information_schema.key_column_usage b
-                          WHERE a.table_schema = 'dbo' AND a.table_name = b.table_name AND a.table_schema = b.table_schema AND a.constraint_name = b.constraint_name
-                          ", .con = conn)
-  }
+                            {`fields`*}
+                          FROM ", ifelse(backend == "Oracle", "{`schema`}.{`table`}", "{`table`}"),
+                        "
+                          GROUP BY {`fields`*}
+                          HAVING COUNT(*) > 1
+                        ) a
+                        ", .con = conn)
   query <- DBI::dbSendQuery(conn, sql)
   result <- DBI::dbFetch(query)
   DBI::dbClearResult(query)
-  return(
-    readr::read_csv('./inst/CDM_41_field_names.csv') %>%
-      anti_join(., result, by = c("Table" = "TABLE_NAME", "Field" = "COLUMN_NAME", "Primary" = "CONSTRAINT_TYPE")) %>%
-      select(Table, Field, Primary)  %>%
-      filter(Primary == "P") %>%
-      arrange(Table) %>%
-      mutate(text = glue::glue("{Table} has primary key definition error(s)."),
-             test = test,
-             result = ifelse(!is.na(text), "FAIL", "PASS")) %>%
-      select(text, test, result)
+  txt <- ifelse(result == 0, glue::glue("Primary key(s) {field} in {table} is/are unique."), 
+                glue::glue("Primary key(s) {field} in {table} is/are not unique."))
+  pass <- ifelse(result == 0, "PASS", "FAIL")
+  return(tibble::tibble(text = as.character(txt),
+                        test = test,
+                        result = as.character(pass)
+  )
   )
 }
 
@@ -1049,7 +1076,7 @@ perform_unit_tests <- function(table, field, test, schema = NULL, backend = NULL
   } else if (test == "DC 1.04") {
     field_conformance(test, schema = schema, backend = backend)
   } else if (test == "DC 1.05") {
-    primary_key_error(test, schema = schema, backend = backend)
+    primary_key_error(table, field, test, schema = schema, backend = backend)
   } else if (test == "DC 1.06") {
     value_validation(table, field, test = test, schema = schema, backend = backend, version = version)
   } else if (test == "DC 1.07") {
@@ -1060,7 +1087,7 @@ perform_unit_tests <- function(table, field, test, schema = NULL, backend = NULL
     if (version == "4.1_STG") {
       orphans(table, "ENCOUNTER_STG", "ENCOUNTERID", test = test, schema = schema, backend = backend, version = version)
     } else {
-      orphans(table, "ENCOUNTER", "ENCOUNTERID", test = test, schema = schema, backend = backend)
+      orphans(table, "ENCOUNTER", "ENCOUNTERID", test = test, schema = schema, backend = backend, version = version)
     }
   } else if (test == "DC 1.10") {
     if (version == "4.1_STG") {
@@ -1069,9 +1096,9 @@ perform_unit_tests <- function(table, field, test, schema = NULL, backend = NULL
       replication_error("ENCOUNTER", table, "ENCOUNTERID", field, test = test, schema = schema, backend = backend)
     }
   } else if (test == "DC 1.11") {
-    record_clustering(test, schema = schema, backend = backend)
+    record_duplication(table, field, test, schema = schema, backend = backend)
   } else if (test == "DC 1.12") {
-    orphans(table, "PROVIDER", "PROVIDERID", test = test, schema = schema, backend = backend)
+    orphans(table, "PROVIDER", key = field, test = test, schema = schema, backend = backend, version = version)
   } else if (test == "DC 1.13") {
     potential_code_error(table, test = test, schema = schema, backend = backend)
   } else if (test == "DC 2.02") {
