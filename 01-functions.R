@@ -668,7 +668,7 @@ potential_code_error <- function(table, test, schema = NULL, backend = NULL) {
            "    ELSE 0
               END AS unexp_length,
               CASE
-                WHEN px_type IN ('10', 'CH') AND ", ifelse(backend == "Oracle", "regexp_like(px, '\\d') THEN 0 ",
+                WHEN px_type IN ('09', 10', 'CH') AND ", ifelse(backend == "Oracle", "regexp_like(px, '\\d') THEN 0 ",
                                                   "px LIKE '%[0-9]%' THEN 0 "),
            "    ELSE 1
               END AS unexp_numeric,
