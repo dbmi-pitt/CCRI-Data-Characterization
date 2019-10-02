@@ -20,6 +20,12 @@ conn <- dbConnect(drv,
                   user = 'user_name', 
                   password = getPass::getPass())
 
+# Edit CDM configuration objects below
+version <- "5.1"
+USE_LOOKUP_TBL <- "N" # Y if looking up values against db, N if looking up against the parseable csv
+ref_table <- "ref table name" # fill in if USE_LOOKUP_TBL = Y, otherwise make NULL
+
+
 # dbplyr v1.2 does not provide dplyr->sql verb translations for median, quantile,
 # or conditional counts (SUM(CASE WHEN)). Below modifies the base_odbc_agg object
 # from dbplyr to add these custom translations.

@@ -183,20 +183,24 @@ events_per_encounter <- function(table, field, vals, desc, test, schema = NULL, 
 }
 
 extreme_values <- function(table, field, test, schema = NULL, backend = NULL, version = NULL) {
-  if(version == "3.1") {
-    parseable <- readr::read_csv('./inst/CDM_31_parseable.csv')
+  if (field == "AGE") {
+    bounds <- c("0", "89")
   }
-  if(version == "4.1") {
-    parseable <- readr::read_csv('./inst/CDM_41_parseable.csv')
+  if (field == "DISPENSE_SUP") {
+    bounds <- c("1", "90")
   }
-  if(version == "4.1_STG") {
-    parseable <- readr::read_csv('./inst/staging_parseable.csv')
+  if (field == "SYSTOLIC") {
+    bounds <- c("40", "210")
   }
-  bounds <- parseable %>%
-    filter(TABLE_NAME == table & FIELD_NAME == field) %>%
-    select(VALUESET_ITEM) %>%
-    pull() %>%
-    as.numeric
+  if (field == "DIASTOLIC") {
+    bounds <- c("40", "120")
+  }
+  if (field == "HT") {
+    bounds <- c("0", "94")
+  }
+  if (field == "WT") {
+    bounds <- c("0", "350")
+  }
 
   if (field=="AGE") {
     sql <- glue::glue_sql("
@@ -258,7 +262,13 @@ extreme_values <- function(table, field, test, schema = NULL, backend = NULL, ve
   )
 }
 
-field_conformance <- function(test, schema = NULL, backend = NULL) {
+field_conformance <- function(test, schema = NULL, backend = NULL, version = NULL) {
+  if (version == "4.1" | version == "4.1_STG") {
+    metadata <- readr::read_csv('./inst/CDM_41_field_names.csv')
+  }
+  if (version == "5.1" | version == "5.1_STG") {
+    metadata <- readr::read_csv('./inst/CDM_51_metadata.csv')
+  }
   if (backend == "Oracle") {
     sql <- glue::glue_sql("
                       SELECT
@@ -271,7 +281,7 @@ field_conformance <- function(test, schema = NULL, backend = NULL) {
     result <- DBI::dbFetch(query)
     DBI::dbClearResult(query)
     
-    dtypes <- readr::read_csv('./inst/CDM_41_field_names.csv') %>%
+    dtypes <- metadata %>%
       anti_join(., result, by = c("Table" = "TABLE_NAME", "Field" = "COLUMN_NAME", "Oracle_dtype" = "DATA_TYPE")) %>%
       mutate(text = glue::glue("{Field} does not conform to data model specification for data type."),
              test = test,
@@ -289,7 +299,7 @@ field_conformance <- function(test, schema = NULL, backend = NULL) {
     result <- DBI::dbFetch(query)
     DBI::dbClearResult(query)
     
-    dtypes <- readr::read_csv('./inst/CDM_41_field_names.csv') %>%
+    dtypes <- metadata %>%
       anti_join(., result, by = c("Table" = "TABLE_NAME", "Field" = "COLUMN_NAME", "mssql_dtype" = "DATA_TYPE")) %>%
       mutate(text = glue::glue("{Field} does not conform to data model specification for data type."),
              test = test,
@@ -298,7 +308,7 @@ field_conformance <- function(test, schema = NULL, backend = NULL) {
       select(text, test, result)
   }
     
-  dlengths <- readr::read_csv('./inst/CDM_41_field_names.csv') %>%
+  dlengths <- metadata %>%
     anti_join(., result, by = c("Table" = "TABLE_NAME", "Field" = "COLUMN_NAME", "LENGTH" = "DATA_LENGTH")) %>%
     select(Table, Field, LENGTH)  %>%
     filter(!is.na(LENGTH)) %>%
@@ -308,7 +318,7 @@ field_conformance <- function(test, schema = NULL, backend = NULL) {
     arrange(Table) %>%
     select(text, test, result)
     
-  dnames <- readr::read_csv('./inst/CDM_41_field_names.csv') %>%
+  dnames <- metadata %>%
     anti_join(., result, by = c("Table" = "TABLE_NAME", "Field" = "COLUMN_NAME")) %>%
     select(Table, Field)  %>%
     mutate(text = glue::glue("{Field} does not conform to data model specification for field name."),
@@ -332,6 +342,9 @@ get_valueset <- function(table, field, version = NULL) {
   if(version == "4.1_STG") {
     parseable <- readr::read_csv('./inst/staging_parseable.csv')
   }
+  if(version == "5.1" | version == "5.1_STG") {
+    parseable <- readr::read_csv('./inst/CDM_51_parseable.csv')
+  }
   return(parseable %>%
            filter(TABLE_NAME == table & FIELD_NAME == field) %>%
            select(VALUESET_ITEM) %>%
@@ -340,7 +353,7 @@ get_valueset <- function(table, field, version = NULL) {
 
 
 orphans <- function(child, parent, key, test, schema = NULL, backend = NULL, version = NULL) {
-  if (version == "4.1_STG") {
+  if (version == "4.1_STG" | version == "5.1_STG") {
     full_table <- stringr::str_replace(parent, "_STG", "")
     sql <- glue::glue_sql("
                         SELECT COUNT(DISTINCT {`key`}) FROM ",
@@ -454,7 +467,7 @@ missing_or_unknown <- function(table, field, test, threshold = NULL, schema = NU
                           .con = conn)
   } else if (field == "BIRTH_DATE" | field == "MEASURE_DATE" | field == "PX_DATE" | field == "DISPENSE_DATE" 
              | field == "RESULT_DATE" | field == "RX_ORDER_DATE" | field == "OBSCLIN_DATE" | field == "DISPENSE_SUP"
-             | field == "ENR_START_DATE" | field == "ENR_END_DATE" | field == "PRO_DATE") {
+             | field == "ENR_START_DATE" | field == "ENR_END_DATE" | field == "PRO_DATE" | field == "VX_RECORD_DATE") {
     sql <- glue::glue_sql("
                       SELECT
                         CASE WHEN b.denom != 0 THEN ROUND(100 * a.num / b.denom, 2)
@@ -647,30 +660,30 @@ potential_code_error <- function(table, test, schema = NULL, backend = NULL) {
         FROM (
           SELECT
             px_type, px, ", ifelse(backend == "Oracle",
-            "greatest(unexp_alpha, unexp_length, unexp_numeric, unexp_string) AS exceptn, ",
-            "CASE WHEN unexp_alpha + unexp_length + unexp_numeric + unexp_string > 1 THEN 1 ELSE 0 END AS exceptn, "),
-           "unexp_alpha, unexp_length, unexp_numeric, unexp_string
+                                   "greatest(unexp_alpha, unexp_length, unexp_numeric, unexp_string) AS exceptn, ",
+                                   "CASE WHEN unexp_alpha + unexp_length + unexp_numeric + unexp_string > 1 THEN 1 ELSE 0 END AS exceptn, "),
+                          "unexp_alpha, unexp_length, unexp_numeric, unexp_string
           FROM (
             SELECT
               px_type, px,
               CASE
                 WHEN px_type = '09' AND ", ifelse(backend == "Oracle", "regexp_like(px, '[a-zA-Z]') THEN 1 ",
                                                   "px LIKE '[a-zA-Z]%' THEN 1 "),
-           "    ELSE 0
+                          "    ELSE 0
               END AS unexp_alpha,
               CASE
                 WHEN px_type = 'CH' AND ", ifelse(backend == "Oracle", "length(replace(px, '.', '')) < 5 THEN 1 ",
                                                   "len(replace(px, '.', '')) < 5 THEN 1 "),
-           "    WHEN px_type = '09' AND ", ifelse(backend == "Oracle", "length(replace(px, '.', '')) NOT IN (3, 4) THEN 1 ",
-                                                  "len(replace(px, '.', '')) NOT IN (3, 4) THEN 1 "),
-           "    WHEN px_type = '10' AND ", ifelse(backend == "Oracle", "length(replace(px, '.', '')) != 7 THEN 1 ",
-                                                  "len(replace(px, '.', '')) != 7 THEN 1 "),
-           "    ELSE 0
+                          "    WHEN px_type = '09' AND ", ifelse(backend == "Oracle", "length(replace(px, '.', '')) NOT IN (3, 4) THEN 1 ",
+                                                                 "len(replace(px, '.', '')) NOT IN (3, 4) THEN 1 "),
+                          "    WHEN px_type = '10' AND ", ifelse(backend == "Oracle", "length(replace(px, '.', '')) != 7 THEN 1 ",
+                                                                 "len(replace(px, '.', '')) != 7 THEN 1 "),
+                          "    ELSE 0
               END AS unexp_length,
               CASE
-                WHEN px_type IN ('09', 10', 'CH') AND ", ifelse(backend == "Oracle", "regexp_like(px, '\\d') THEN 0 ",
-                                                  "px LIKE '%[0-9]%' THEN 0 "),
-           "    ELSE 1
+                WHEN px_type IN ('09', '10', 'CH') AND ", ifelse(backend == "Oracle", "regexp_like(px, '\\d') THEN 0 ",
+                                                                 "px LIKE '%[0-9]%' THEN 0 "),
+                          "    ELSE 1
               END AS unexp_numeric,
               CASE
                 WHEN px_type = 'CH' AND px IN ('00000', '99999') THEN 1 
@@ -678,7 +691,7 @@ potential_code_error <- function(table, test, schema = NULL, backend = NULL) {
                 ELSE 0
               END AS unexp_string
             FROM ", ifelse(backend == "Oracle", "{`schema`}.{`table`}", "{`table`}"),
-           "
+                          "
            WHERE px_type IN ('CH', '09', '10')
            )
         )
@@ -692,9 +705,58 @@ potential_code_error <- function(table, test, schema = NULL, backend = NULL) {
     SELECT
       px_type, count(px) as total
     FROM ", ifelse(backend == "Oracle", "{`schema`}.{`table`} ", "{`table`} "),
-   "GROUP BY px_type
+                          "GROUP BY px_type
     ) b on a.code_type = b.px_type
     ", .con = conn)
+  }
+  if (table == "CONDITION" | table == "CONDITION_STG") {
+    sql <- glue::glue_sql("
+             SELECT
+               code_type, records, total, round(100*records/total, 2) AS pct
+             FROM (
+               SELECT
+                 code_type, sum(exceptn) AS records
+               FROM (
+                 SELECT
+                   condition_type AS code_type, condition, ",
+                          ifelse(backend == "Oracle", "greatest(unexp_alpha, unexp_length, unexp_numeric, unexp_string) AS exceptn, ",
+                                 "CASE WHEN unexp_alpha + unexp_length + unexp_numeric + unexp_string > 1 THEN 1 ELSE 0 END AS exceptn, "),
+                          "unexp_alpha, unexp_length, unexp_numeric, unexp_string
+           FROM (
+             SELECT
+               condition_type, condition,
+               CASE WHEN condition_type = '09' AND ", ifelse(backend == "Oracle", "regexp_like(condition, '^[A-DF-UW-Z]{{1}}') THEN 1 ",
+                                                      "condition LIKE '[A-DF-UW-Z]%' THEN 1 "),
+                          "     ELSE 0
+               END AS unexp_alpha,
+               CASE WHEN condition_type = '09' AND ", ifelse(backend == "Oracle", "length(replace(condition, '.', '')) ",
+                                                      "len(replace(condition, '.', '')) "), "NOT BETWEEN 3 AND 5 THEN 1
+                    WHEN condition_type = '10' AND ", ifelse(backend == "Oracle", "length(replace(condition, '.', '')) ",
+                                                      "len(replace(condition, '.', '')) "), "NOT BETWEEN 3 AND 7 THEN 1
+                    ELSE 0
+               END AS unexp_length,
+               CASE WHEN condition_type = '10' AND ", ifelse(backend == "Oracle", "regexp_like(condition, '^[0-9]{{1}}') THEN 1",
+                                                      "condition LIKE '[0-9]%' THEN 1"),
+                          "     ELSE 0
+               END as unexp_numeric,
+               CASE WHEN condition_type = '09' AND condition IN ('000') THEN 1
+                    WHEN condition_type = '10' AND condition IN ('000', '999') THEN 1
+                    ELSE 0
+               END AS unexp_string
+            FROM ", ifelse(backend == "Oracle", "{`schema`}.{`table`}", "{`table`}"),
+                          ")
+        )
+      GROUP BY code_type
+      ORDER BY records DESC
+    ) a
+  INNER JOIN (
+    SELECT
+      condition_type, count(condition) as total
+    FROM ", ifelse(backend == "Oracle", "{`schema`}.{`table`} ", "{`table`} "),
+                          "GROUP BY condition_type
+  ) b on a.code_type = b.condition_type
+  WHERE a.code_type IN ('09', '10')
+  ", .con = conn)
   }
   if (table == "PRESCRIBING" | table == "PRESCRIBING_STG") {
     sql <- glue::glue_sql("
@@ -820,6 +882,110 @@ ifelse(backend == "Oracle", "greatest(unexp_alpha, unexp_length, unexp_numeric, 
 ") b on a.code_type = b.code_type
     ", .con = conn)
   }
+  if (table == "IMMUNIZATION" | table == "IMMUNIZATION_STG") {
+    sql <- glue::glue_sql("
+      SELECT
+        a.code_type, records, total, round(100*records/total, 2) AS pct
+      FROM (
+      SELECT
+        code_type, sum(records) AS records
+      FROM (
+        SELECT
+          vx_code_type as code_type, vx_code,
+          sum(exceptn) AS records,
+          unexp_alpha, unexp_length, unexp_numeric, unexp_string
+        FROM (
+          SELECT
+            vx_code_type, vx_code, ", ifelse(backend == "Oracle",
+                                   "greatest(unexp_alpha, unexp_length, unexp_numeric, unexp_string) AS exceptn, ",
+                                   "CASE WHEN unexp_alpha + unexp_length + unexp_numeric + unexp_string > 1 THEN 1 ELSE 0 END AS exceptn, "),
+                          "unexp_alpha, unexp_length, unexp_numeric, unexp_string
+          FROM (
+            SELECT
+              vx_code_type, vx_code,
+              CASE
+                WHEN vx_code_type in ('CX', 'RX') AND ", ifelse(backend == "Oracle", "regexp_like(vx_code, '[a-zA-Z]') THEN 1 ",
+                                                  "vx_code LIKE '[a-zA-Z]%' THEN 1 "),
+                          "    ELSE 0
+              END AS unexp_alpha,
+              CASE
+                WHEN vx_code_type = 'CH' AND ", ifelse(backend == "Oracle", "length(replace(vx_code, '.', '')) < 5 THEN 1 ",
+                                                  "len(replace(vx_code, '.', '')) < 5 THEN 1 "),
+                          "    WHEN vx_code_type = 'CX' AND ", ifelse(backend == "Oracle", "length(replace(vx_code, '.', '')) NOT IN (2, 3) THEN 1 ",
+                                                                 "len(replace(vx_code, '.', '')) NOT IN (2, 3) THEN 1 "),
+                          "    WHEN vx_code_type = 'RX' AND ", ifelse(backend == "Oracle", "length(replace(vx_code, '.', '')) NOT BETWEEN 2 AND 7 THEN 1",
+                                "len(replace(vx_code, '.', '')) NOT BETWEEN 2 AND 7 THEN 1 "),
+                          "    ELSE 0
+              END AS unexp_length,
+              CASE
+                WHEN vx_code_type IN ('CX', 'CH', 'RX') AND ", ifelse(backend == "Oracle", "regexp_like(vx_code, '\\d') THEN 0 ",
+                                                                 "vx_code LIKE '%[0-9]%' THEN 0 "),
+                          "    ELSE 1
+              END AS unexp_numeric,
+              CASE
+                WHEN vx_code_type = 'CH' AND vx_code IN ('00000', '99999') THEN 1 
+                WHEN vx_code_type = 'CX' AND vx_code IN ('000', '999') THEN 1
+                ELSE 0
+              END AS unexp_string
+            FROM ", ifelse(backend == "Oracle", "{`schema`}.{`table`}", "{`table`}"),
+                          "
+           WHERE vx_code_type IN ('CH', 'CX', 'RX')
+           )
+        )
+        GROUP BY vx_code_type, vx_code, unexp_alpha, unexp_length, unexp_numeric, unexp_string
+        ORDER BY records DESC
+      )
+      GROUP BY code_type
+      ORDER BY records DESC
+    ) a
+    INNER JOIN (
+    SELECT
+      vx_code_type, count(vx_code) as total
+    FROM ", ifelse(backend == "Oracle", "{`schema`}.{`table`} ", "{`table`} "),
+                          "GROUP BY vx_code_type
+    ) b on a.code_type = b.vx_code_type
+    ", .con = conn)
+  }
+  if (table == "PRESCRIBING" | table == "PRESCRIBING_STG") {
+    sql <- glue::glue_sql("
+      SELECT
+        a.code_type, records, total, 100*round(records/total, 2) as pct
+      FROM (
+      SELECT
+        code_type,
+        sum(exceptn) as records
+      FROM (
+        SELECT
+          rxnorm_cui, 'RX' as code_type, ",
+                          ifelse(backend == "Oracle", "greatest(unexp_alpha, unexp_length, unexp_numeric, unexp_string) AS exceptn, ",
+                                 "CASE WHEN unexp_alpha + unexp_length + unexp_numeric + unexp_string > 1 THEN 1 ELSE 0 END as exceptn, "),
+                          "  unexp_alpha, unexp_length, unexp_numeric, unexp_string
+        FROM (
+          SELECT
+            rxnorm_cui,
+            CASE WHEN ", ifelse(backend == "Oracle", "regexp_like(rxnorm_cui, '[a-zA-Z]') THEN 1 ",
+                                "rxnorm_cui LIKE '[a-zA-Z]%' THEN 1 "),
+                          "         ELSE 0
+            END AS unexp_alpha,
+            CASE WHEN ", ifelse(backend == "Oracle", "length(replace(rxnorm_cui, '.', '')) NOT BETWEEN 2 AND 7 THEN 1",
+                                "len(replace(rxnorm_cui, '.', '')) NOT BETWEEN 2 AND 7 THEN 1 "),
+                          "         ELSE 0
+            END AS unexp_length,
+            0 AS unexp_numeric, 0 as unexp_string
+          FROM ", ifelse(backend == "Oracle", "{`schema`}.{`table`} ", "{`table`} "),
+                          "
+       )
+      )
+    GROUP BY code_type
+    ORDER BY records DESC
+    ) a
+    INNER JOIN (
+      SELECT
+        'RX' as code_type, count(rxnorm_cui) as total
+      FROM {`schema`}.{`table`}
+    ) b ON a.code_type = b.code_type
+    ", .con = conn)
+  }
   query <- DBI::dbSendQuery(conn, sql)
   result <- DBI::dbFetch(query)
   DBI::dbClearResult(query)
@@ -897,7 +1063,13 @@ replication_error <- function(original, replication, key, field, test, schema = 
   )
 }
 
-required_fields <- function(test, schema = NULL, backend = NULL) {
+required_fields <- function(test, schema = NULL, backend = NULL, version = NULL) {
+  if (version == "4.1" | version == "4.1_STG") {
+    metadata <- readr::read_csv('./inst/CDM_41_field_names.csv')
+  }
+  if (version == "5.1" | version == "5.1_STG") {
+    metadata <- readr::read_csv('./inst/CDM_51_metadata.csv')
+  }
   if (backend == "Oracle") {
     sql <- glue::glue_sql("
                       SELECT
@@ -918,7 +1090,7 @@ required_fields <- function(test, schema = NULL, backend = NULL) {
   result <- DBI::dbFetch(query)
   DBI::dbClearResult(query)
   return(
-    readr::read_csv('./inst/CDM_41_field_names.csv') %>%
+    metadata %>%
       anti_join(., result, by = c("Table" = "TABLE_NAME", "Field" = "COLUMN_NAME")) %>%
       select(Table, Field, Required)  %>%
       filter(Required == "Y") %>%
@@ -1057,40 +1229,99 @@ value_validation <- function(table, field, test, schema = NULL, backend = NULL, 
   )
 }
 
-perform_unit_tests <- function(table, field, test, schema = NULL, backend = NULL, version = NULL) {
+value_validation_db <- function(table, field, test, cdm_schema = NULL, ref_schema = NULL, ref_table = NULL, backend = NULL, version = NULL) {
+  result <- {if(backend == "Oracle") tbl(conn, in_schema(cdm_schema, table)) else tbl(conn, table)} %>%
+    select(field) %>%
+    rename(VALUESET_ITEM = field) %>%
+    anti_join({if(backend == "Oracle") tbl(conn, in_schema(ref_schema, ref_table)) else tbl(conn, ref_table)} %>%
+                filter(TABLE_NAME == table & FIELD_NAME == field),
+              by = "VALUESET_ITEM"
+    ) %>%
+    filter(!is.na(VALUESET_ITEM)) %>%
+    count() %>%
+    pull
+  if (result > 0) {
+    df <- {if(backend == "Oracle") tbl(conn, in_schema(cdm_schema, table)) else tbl(conn, table)} %>%
+      select(field) %>%
+      rename(VALUESET_ITEM = field) %>%
+      anti_join({if(backend == "Oracle") tbl(conn, in_schema(ref_schema, ref_table)) else tbl(conn, ref_table)} %>%
+                  filter(TABLE_NAME == table & FIELD_NAME == field),
+                by = "VALUESET_ITEM"
+      ) %>%
+      filter(!is.na(VALUESET_ITEM)) %>%
+      group_by(VALUESET_ITEM) %>%
+      count %>% arrange(-n) %>% collect %T>%
+      readr::write_csv(., paste0('./unit_tests/invalid_values/', field, '_', format(Sys.time(), "%m%d%Y")))
+    if (field == "RESULT_UNIT" | field == "OBSCLIN_RESULT_UNIT" | field == "OBSGEN_RESULT_UNIT") {
+      df %>% 
+        select(VALUESET_ITEM) %>%
+        pull %>%
+        purrr::map_df(check_ucum_api) %>%
+        readr::write_csv(., paste0('./unit_tests/invalid_values/', field, '_ucum_api_', format(Sys.time(), "%m%d%Y"), '.csv'))
+    }
+  }
+  txt <- glue::glue("Field {field} from {table} has {result} invalid records")
+  
+  return(tibble::tibble(text = txt,
+                        test = test,
+                        result = as.numeric(result),
+                        threshold = 0) %>%
+           mutate(result = ifelse(result > threshold, "FAIL", "PASS")) %>%
+           select(text, test, result)
+  )
+}
+
+perform_unit_tests <- function(table, field, test, schema = NULL, ref_schema = NULL, ref_table = NULL, backend = NULL, version = NULL) {
   print(table)
   print(field)
   print(test)
+  if (version == "4.1" | version == "4.1_STG") {
+    required <- c('DEMOGRAPHIC', 'ENROLLMENT', 'ENCOUNTER', 
+                  'DIAGNOSIS', 'PROCEDURES', 'VITAL', 'DISPENSING',
+                  'LAB_RESULT_CM', 'CONDITION', 'PRO_CM', 'PRESCRIBING',
+                  'PCORNET_TRIAL', 'DEATH', 'DEATH_CAUSE', 'HARVEST',
+                  'PROVIDER', 'MED_ADMIN', 'OBS_CLIN', 'OBS_GEN')
+    populated <- c('DEMOGRAPHIC', 'ENROLLMENT', 'ENCOUNTER', 'DIAGNOSIS', 'PROCEDURES', 'HARVEST')
+  }
+  if (version == "5.1" | version == "5.1_STG") {
+    required <- c('DEMOGRAPHIC', 'ENROLLMENT', 'ENCOUNTER', 
+      'DIAGNOSIS', 'PROCEDURES', 'VITAL', 'DISPENSING',
+      'LAB_RESULT_CM', 'CONDITION', 'PRO_CM', 'PRESCRIBING',
+      'PCORNET_TRIAL', 'DEATH', 'DEATH_CAUSE', 'HARVEST',
+      'PROVIDER', 'MED_ADMIN', 'OBS_CLIN', 'OBS_GEN',
+      'HASH_TOKEN', 'IMMUNIZATION', 'LDS_ADDRESS_HISTORY')
+    populated <- c('DEMOGRAPHIC', 'ENROLLMENT', 'ENCOUNTER', 'DIAGNOSIS', 'PROCEDURES', 'HARVEST')
+  }
   if (test == "DC 1.01") {
-    required_tables(test = test, required = c('DEMOGRAPHIC', 'ENROLLMENT', 'ENCOUNTER', 
-                                              'DIAGNOSIS', 'PROCEDURES', 'VITAL', 'DISPENSING',
-                                              'LAB_RESULT_CM', 'CONDITION', 'PRO_CM', 'PRESCRIBING',
-                                              'PCORNET_TRIAL', 'DEATH', 'DEATH_CAUSE', 'HARVEST',
-                                              'PROVIDER', 'MED_ADMIN', 'OBS_CLIN', 'OBS_GEN'),
+    required_tables(test = test, required = required,
                     schema = schema, backend = backend)
   } else if (test == "DC 1.02") {
-    tables_populated(test, tables = c('DEMOGRAPHIC', 'ENROLLMENT', 'ENCOUNTER', 'DIAGNOSIS', 'PROCEDURES', 'HARVEST'),
+    tables_populated(test, tables = populated,
                      schema = schema, backend = backend)
   } else if (test == "DC 1.03") {
-    required_fields(test, schema = schema, backend = backend)
+    required_fields(test, schema = schema, backend = backend, version = version)
   } else if (test == "DC 1.04") {
-    field_conformance(test, schema = schema, backend = backend)
+    field_conformance(test, schema = schema, backend = backend, version = version)
   } else if (test == "DC 1.05") {
     primary_key_error(table, field, test, schema = schema, backend = backend)
   } else if (test == "DC 1.06") {
-    value_validation(table, field, test = test, schema = schema, backend = backend, version = version)
+    if (USE_LOOKUP_TBL == "Y") {
+      value_validation_db(table, field, test = test, cdm_schema = schema, ref_schema = ref_schema, ref_table = ref_table, backend = backend, version = version)
+    } else {
+      value_validation(table, field, test = test, schema = schema, backend = backend, version = version)
+    }
   } else if (test == "DC 1.07") {
     missing_or_unknown(table, field, test = test, threshold = 0, schema = schema, backend = backend)
   } else if (test == "DC 1.08") {
     orphans(table, "DEMOGRAPHIC", "PATID", test = test, schema = schema, backend = backend, version = version)
   } else if (test == "DC 1.09") {
-    if (version == "4.1_STG") {
+    if (version == "4.1_STG" | version == "5.1_STG") {
       orphans(table, "ENCOUNTER_STG", "ENCOUNTERID", test = test, schema = schema, backend = backend, version = version)
     } else {
       orphans(table, "ENCOUNTER", "ENCOUNTERID", test = test, schema = schema, backend = backend, version = version)
     }
   } else if (test == "DC 1.10") {
-    if (version == "4.1_STG") {
+    if (version == "4.1_STG" | version == "5.1_STG") {
       replication_error("ENCOUNTER_STG", table, "ENCOUNTERID", field, test = test, schema = schema, backend = backend)
     } else {
       replication_error("ENCOUNTER", table, "ENCOUNTERID", field, test = test, schema = schema, backend = backend)
@@ -1128,14 +1359,14 @@ numeric_query_oracle <- function(conn, schema, table, colinfo, filtered = FALSE,
                                  field = NULL, value = NULL) {
   tbl(conn, dbplyr::in_schema(schema, table)) %>%
     {if(filtered == TRUE) filter(., rlang::sym(field) == value) else .} %>%
-    rename_at(.vars = vars(contains("RAW")), .funs = funs(gsub("\\RAW", "R", .))) %>%
-    rename_at(.vars = vars(contains("_")), .funs = funs(gsub("\\_", "", .))) %>%
-    summarize_if(is.numeric, funs(cn = count, nd = n_distinct, min, p05 = quantile(., 0.05),
-                                  p25 = quantile(., 0.25), median, mean,
-                                  p75 = quantile(., 0.75), p95 = quantile(., 0.95),
-                                  max)) %>%
+    rename_at(.vars = vars(contains("RAW")), .funs = list(~gsub("\\RAW", "R", .))) %>%
+    rename_at(.vars = vars(contains("_")), .funs = list(~gsub("\\_", "", .))) %>%
+    summarize_if(is.numeric, list(cn = ~ count(), nd = n_distinct, min = min, p05 = ~ quantile(., 0.05),
+                                  p25 = ~ quantile(., 0.25), median = median, mean = mean,
+                                  p75 = ~ quantile(., 0.75), p95 = ~ quantile(., 0.95),
+                                  max = max)) %>%
     collect() %>%
-    mutate_all(funs(round(., 3))) %>%
+    mutate_all(list(~round(., 3))) %>%
     purrr::when(
       sum(1*(colinfo$data.type=="numeric"))==1
       ~ setNames(., paste0(gsub("\\_", "", colinfo$field.name[colinfo$data.type=="numeric"]), "_", names(.))),
@@ -1147,21 +1378,21 @@ numeric_query_mssql <- function(conn, table, colinfo, filtered = FALSE,
                                 field = NULL, value = NULL) {
   tbl(conn, table) %>%
     {if(filtered == TRUE) filter(., rlang::sym(field) == value) else .} %>%
-    rename_at(.vars = vars(contains("_")), .funs = funs(gsub("\\_", "", .))) %>%
-    summarize_if(is.numeric, funs(cn = count, nd = n_distinct, min, mean, max)) %>%
+    rename_at(.vars = vars(contains("_")), .funs = list(~gsub("\\_", "", .))) %>%
+    summarize_if(is.numeric, list(cn = ~ count(), nd = n_distinct, min = min, mean = mean, max = max)) %>%
     collect() %>%
     cbind(
       tbl(conn, table) %>%  
         {if(filtered == TRUE) filter(., rlang::sym(field) == value) else .} %>%
-        rename_at(.vars = vars(contains("RAW")), .funs = funs(gsub("\\RAW", "R", .))) %>%
-        rename_at(.vars = vars(contains("_")), .funs = funs(gsub("\\_", "", .))) %>%
-        summarize_if(is.numeric, funs(p05 = quantile(., 0.05), p25 = quantile(., 0.25),
-                                      median = quantile(., 0.5), p75 = quantile(., 0.75),
-                                      p95 = quantile(., 0.95))) %>%
+        rename_at(.vars = vars(contains("RAW")), .funs = list(~gsub("\\RAW", "R", .))) %>%
+        rename_at(.vars = vars(contains("_")), .funs = list(~gsub("\\_", "", .))) %>%
+        summarize_if(is.numeric, list(p05 = ~ quantile(., 0.05), p25 = ~ quantile(., 0.25),
+                                      median = ~ quantile(., 0.5), p75 = ~ quantile(., 0.75),
+                                      p95 = ~ quantile(., 0.95))) %>%
         summarize_all(min) %>%
         collect()
     ) %>%
-    mutate_all(funs(round(., 3))) %>%
+    mutate_all(list(~round(., 3))) %>%
     purrr::when(
       sum(1*(colinfo$data.type=="numeric"))==1
       ~ setNames(., paste0(gsub("\\_", "", colinfo$field.name[colinfo$data.type=="numeric"]), "_", names(.))),
@@ -1181,7 +1412,12 @@ generate_summary <- function(conn, backend = NULL, version = NULL, schema = NULL
   #'           (for instance over a subset of LOINC codes)
   #' field: name of column to filter over, required if filtered = TRUE
   #' value: name of value to filter in given field, required if filtered = TRUE
-
+  if (version == "4.1" | version == "4.1_STG") {
+    metadata <- readr::read_csv('./inst/CDM_41_field_names.csv')
+  }
+  if (version == "5.1" | version == "5.1_STG") {
+    metadata <- readr::read_csv('./inst/CDM_51_metadata.csv')
+  }
   # get column info to decide what queries to run
   rs <- DBI::dbSendQuery(conn, paste0("SELECT * FROM ", ifelse(backend=="Oracle", paste0(schema, ".", table), table)))
   colinfo <- DBI::dbColumnInfo(rs)
@@ -1189,18 +1425,18 @@ generate_summary <- function(conn, backend = NULL, version = NULL, schema = NULL
   # initiate queries on given table in schema
   {if(backend == "Oracle") tbl(conn, dbplyr::in_schema(schema, table)) else tbl(conn, table)} %>%
   {if(filtered == TRUE) filter(., rlang::sym(field) == value) else .} %>%
-    rename_at(.vars = vars(contains("RAW")), .funs = funs(gsub("\\RAW", "R", .))) %>%
-    rename_at(.vars = vars(contains("_")), .funs = funs(gsub("\\_", "", .))) %>%
-    summarize_if(is.character, funs(cn = count, nd = n_distinct, min, max)) %>%
+    rename_at(.vars = vars(contains("RAW")), .funs = list(~gsub("\\RAW", "R", .))) %>%
+    rename_at(.vars = vars(contains("_")), .funs = list(~gsub("\\_", "", .))) %>%
+    summarize_if(is.character, list(cn = ~ count(), nd = n_distinct, min = min, max = max)) %>%
     collect() %>%
     cbind(
       {if(backend == "Oracle") tbl(conn, dbplyr::in_schema(schema, table)) else tbl(conn, table)} %>%
       {if(filtered == TRUE) filter(., rlang::sym(field) == value) else .} %>%
-        rename_at(.vars = vars(contains("RAW")), .funs = funs(gsub("\\RAW", "R", .))) %>%
-        rename_at(.vars = vars(contains("_")), .funs = funs(gsub("\\_", "", .))) %>%
+        rename_at(.vars = vars(contains("RAW")), .funs = list(~gsub("\\RAW", "R", .))) %>%
+        rename_at(.vars = vars(contains("_")), .funs = list(~gsub("\\_", "", .))) %>%
         select(., -contains("DATE"), -contains("TIME")) %>%
-        summarize_if(is.character, funs(nNI = cond_count(., 'NI'), nUN = cond_count(., 'UN'),
-                                        nOT = cond_count(., 'OT'))) %>%
+        summarize_if(is.character, list(nNI = ~ cond_count(., 'NI'), nUN = ~ cond_count(., 'UN'),
+                                        nOT = ~ cond_count(., 'OT'))) %>%
         collect()
     ) %>%
     # dbplyr complains if a query returns no columns, so check if any columns are numeric
@@ -1255,14 +1491,10 @@ generate_summary <- function(conn, backend = NULL, version = NULL, schema = NULL
                   pct_missing = pct_null + pct_NI + pct_UN + pct_OT
                 )
                 ) %>%
-    {if(version == "3.1") left_join(., readr::read_csv('./inst/CDM_31_field_names.csv') %>%
-                                      filter(Table == table) %>%
-                                      select(key, Field:Required),
-                                    by = 'key')
-      else if (version == "4.1") left_join(., readr::read_csv('./inst/CDM_41_field_names.csv') %>%
-                                             filter(Table == table) %>%
-                                             select(key, Field:Required),
-                                           by = 'key')} %>%
+    left_join(., metadata %>%
+                filter(Table == table) %>%
+                select(key, Field:Required),
+                by = 'key') %>%
     arrange(Order) %>%
     select(-key, -Order) %>%
     select(Field, Required, everything()) %T>%

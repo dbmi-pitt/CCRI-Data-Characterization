@@ -8,8 +8,11 @@ conn <- dbConnect(drv, "[connection string]",
                   "[username]", password = getPass::getPass())
 
 # Enter the schema name and version of your database
-schema <- "schema_name"
-version <- "3.1 or 4.1"
+cdm_schema <- "schema name"
+version <- "5.1"
+USE_LOOKUP_TBL <- "Y" # Y if looking up values against db, N if looking up against the parseable csv
+ref_schema <- "ref table schema name" # fill in if USE_LOOKUP_TBL = Y, otherwise make NULL
+ref_table <- "ref table name" # fill in if USE_LOOKUP_TBL = Y, otherwise make NULL
 
 # dbplyr v1.2 does not provide dplyr->sql verb translations for median, quantile,
 # or conditional counts (SUM(CASE WHEN)). Below modifies the base_odbc_agg object
@@ -22,20 +25,20 @@ sql_translate_env.Oracle <- function(con) {
                    as.double = sql_cast("NUMBER")
     ),
     sql_translator(.parent = base_odbc_agg,
-                   count = function(...) {
-                     vars <- sql_vector(list(...), parens = FALSE, collapse = ", ")
-                     build_sql("COUNT(", vars, ")")
-                   },
-                   median = function(...) {
-                     vars <- sql_vector(list(...), parens = FALSE, collapse = ", ")
-                     build_sql("MEDIAN(", vars, ")")
-                   },
+                   #count = function(...) {
+                   #  vars <- sql_vector(list(...), parens = FALSE, collapse = ", ")
+                   #  build_sql("COUNT(", vars, ")")
+                   #},
+                   #median = function(...) {
+                   #  vars <- sql_vector(list(...), parens = FALSE, collapse = ", ")
+                   #  build_sql("MEDIAN(", vars, ")")
+                   #},
                    quantile = function(varlist, perc) {
-                     vars <- sql_vector(list(varlist), parens = FALSE, collapse = ", ")
+                     vars <- sql_vector(list(varlist), parens = FALSE, collapse = ", ", con = con)
                      build_sql("PERCENTILE_DISC(", (1 - perc), ") WITHIN GROUP (ORDER BY ", vars, " DESC)")
                    },
                    cond_count = function(varlist, cond) {
-                     vars <- sql_vector(list(varlist), parens = FALSE, collapse = ", ")
+                     vars <- sql_vector(list(varlist), parens = FALSE, collapse = ", ", con = con)
                      build_sql("SUM(CASE WHEN (", vars, ") = ", cond, " THEN 1 ELSE 0 END)")
                    }
     ),
