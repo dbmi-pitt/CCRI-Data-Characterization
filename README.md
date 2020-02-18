@@ -11,6 +11,8 @@ for PCORI CDM tables.
     * DT, htmltools, htmlwidgets for data visualization
     * if using a JDBC connection: rJava and RJDBC
     * if using a ODBC connection: odbc
+    * if using PostgreSQL: RPostgreSQL
+    * if using MySQL: RMySQL
 * Appropriate SQL driver stored locally
     * for Oracle JDBC connections, ojdbc7.jar or ojdbc8.jar
     * for MSSQL JDBC connections, jtds-1.3.1.jar

@@ -1,4 +1,4 @@
-backend <- "Oracle" # or mssql
+backend <- "Oracle" # Oracle, mssql, postgres, or mysql
 addr <- "hostname"
 port <- 1521 # or 1433 for mssql, or whichever port your rdbms is located
 db <- "db_name"
@@ -7,7 +7,7 @@ pass <- "password"
 jdbc_conn <- T # T if using jdbc, F if odbc
 path_to_driver <- "file_path" # if using jdbc, fill in path to jdbc driver, otherwise set to NULL
 odbc_driver <- "driver_name" # if using odbc, fill in name of odbc driver from odbcinst.ini, otherwise set to NULL
-cdm_schema <- "schema_name" # if using oracle, provide CDM schema name
+cdm_schema <- "schema_name" # if using Oracle or postgres, provide CDM schema name
 USE_LOOKUP_TBL <- "Y" # Y if using ref table for value validation, N if checking against parseable CSV
 ref_schema <- "schema_name" # if USE_LOOKUP_TBL=Y and using Oracle, provide schema name for ref table, otherwise set to NULL
 ref_table <- "PATH_REF" # if USE_LOOKUP_TBL=Y, provide ref table name
@@ -30,6 +30,18 @@ if (jdbc_conn == T) {
     sql_select.JDBCConnection <- dbplyr:::`sql_select.Microsoft SQL Server`
   }
   conn <- dbConnect(drv, connection_string, user, pass)
+} else if (backend == "postgres") {
+  conn <- DBI::dbConnect(RPostgreSQL::PostgreSQL(),
+                         host = addr,
+                         dbname = db,
+                         user = user,
+                         password = pass)
+} else if (backend == "mysql") {
+  conn <- DBI::dbConnect(RMySQL::MySQL(),
+                         server = addr,
+                         db = db,
+                         user = user,
+                         password = pass)
 } else {
   conn <- DBI::dbConnect(odbc::odbc(),
                          Driver = odbc_driver,
